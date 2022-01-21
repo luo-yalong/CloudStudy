@@ -200,3 +200,509 @@ https://start.spring.io/actuator/info
 
 ​		按照之前创建模块的流程，新建一个 `maven` 模块，名称为 `cloud-provider-payment8001`
 
+**目录结构如图所示**
+
+![image-20220121110028011](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-21/1fdae56fe38885eccba1535457b878d4.jpeg)
+
+### 5.2 改 `pom`
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <parent>
+        <artifactId>CloudStudy</artifactId>
+        <groupId>com.lyl</groupId>
+        <version>1.0-SNAPSHOT</version>
+    </parent>
+    <modelVersion>4.0.0</modelVersion>
+
+    <artifactId>cloud-provider-payment8001</artifactId>
+
+    <properties>
+        <maven.compiler.source>8</maven.compiler.source>
+        <maven.compiler.target>8</maven.compiler.target>
+    </properties>
+
+
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.baomidou</groupId>
+            <artifactId>mybatis-plus-boot-starter</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.alibaba</groupId>
+            <artifactId>druid-spring-boot-starter</artifactId>
+            <version>1.1.10</version>
+        </dependency>
+        <!--mysql-connector-java-->
+        <dependency>
+            <groupId>mysql</groupId>
+            <artifactId>mysql-connector-java</artifactId>
+        </dependency>
+        <!--jdbc-->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-jdbc</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-devtools</artifactId>
+            <scope>runtime</scope>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+</project>
+```
+
+### 5.3 改 `yml`
+
+```yaml
+server:
+  port: 8001
+
+spring:
+  application:
+    name: cloud-payment-service
+  datasource:
+    type: com.alibaba.druid.pool.DruidDataSource            # 当前数据源操作类型
+    driver-class-name: com.mysql.cj.jdbc.Driver              # mysql驱动包
+    url: jdbc:mysql://localhost:3306/my?useUnicode=true&characterEncoding=utf-8&useSSL=false
+    username: root
+    password: 1234
+
+mybatis-plus:
+  type-aliases-package: com.lyl.springcloud.entities    #别名
+  mapper-locations: classpath:mapper/*.xml
+```
+
+### 5.4 主启动
+
+```java
+package com.lyl.springcloud;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+/**
+ * @author luoyalong
+ */
+@SpringBootApplication
+public class PaymentMain8001 {
+    public static void main(String[] args) {
+        SpringApplication.run(PaymentMain8001.class,args);
+    }
+}
+```
+
+### 5.5 业务类
+
+> 业务类的 `entity`  、`dao` 、`service` 、`serviceImpl `  和  `mapper.xml`  都可以使用 `idea` 的插件 `easy-code` 来自动生成。
+
+1. **SQL**
+
+​		在 `mysql` 上面创建一个 数据库，新建一张表
+
+```mysql
+CREATE TABLE `payment`(
+	`id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT 'ID',
+    `serial` varchar(200) DEFAULT '',
+	PRIMARY KEY (id)
+)ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8mb4
+```
+
+---
+
+2. 创建 `entity`
+
+   ```java
+   package com.lyl.springcloud.entity;
+   
+   import com.baomidou.mybatisplus.annotation.IdType;
+   import com.baomidou.mybatisplus.annotation.TableId;
+   import lombok.Data;
+   import lombok.experimental.Accessors;
+   
+   import java.io.Serializable;
+   import java.math.BigInteger;
+   
+   /**
+    * (Payment)表实体类
+    *
+    * @author 罗亚龙
+    * @since 2022-01-21 11:08:34
+    */
+   @Data
+   @Accessors(chain = true)
+   public class Payment implements Serializable{
+       private static final long serialVersionUID = 893605518102438670L;
+   
+       /**
+        * ID
+        */
+       @TableId(type = IdType.AUTO)
+       private BigInteger id; 
+   
+       /**
+        * serial
+        */
+       private String serial; 
+   
+   }
+   ```
+
+3. 创建 `dao`
+
+   1. dao
+
+      ```java
+      package com.lyl.springcloud.dao;
+      
+      import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+      import com.lyl.springcloud.entity.Payment;
+      import org.apache.ibatis.annotations.Mapper;
+      import org.apache.ibatis.annotations.Param;
+      
+      import java.util.List;
+      
+      /**
+       * (Payment)表数据库访问层
+       *
+       * @author 罗亚龙
+       * @since 2022-01-21 11:08:34
+       */
+      @Mapper
+      public interface PaymentDao extends BaseMapper<Payment> {
+          
+          /**
+           * 批量新增数据（MyBatis原生foreach方法）
+           *
+           * @param entities List<Payment> 实例对象列表
+           * @return 影响行数
+           */
+          int insertBatch(@Param("entities") List<Payment> entities);
+      
+          /**
+           * 批量新增或按主键更新数据（MyBatis原生foreach方法）
+           *
+           * @param entities List<Payment> 实例对象列表
+           * @return 影响行数
+           * @throws org.springframework.jdbc.BadSqlGrammarException 入参是空List的时候会抛SQL语句错误的异常，请自行校验入参
+           */
+          int insertOrUpdateBatch(@Param("entities") List<Payment> entities);
+      }
+      ```
+
+   2. xml
+
+      ```xml
+      <?xml version="1.0" encoding="UTF-8"?>
+      <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+      <mapper namespace="com.lyl.springcloud.dao.PaymentDao">
+          
+          <sql id="insert_column">
+              serial    
+          </sql>
+          
+          <sql id="all_column">
+              id ,<include refid="insert_column"/>
+          </sql>
+          
+          <resultMap type="com.lyl.springcloud.entity.Payment" id="PaymentMap">
+              <id property="id" column="id"/>
+              <result property="serial" column="serial"/>
+          </resultMap>
+      
+          <!-- 批量插入 -->
+          <insert id="insertBatch" keyProperty="id" useGeneratedKeys="true">
+              insert into cloud_study.payment(<include refid="insert_column"/>)
+              values
+              <foreach collection="entities" item="entity" separator=",">
+                  (#{entity.serial})
+              </foreach>
+          </insert>
+          <!-- 批量插入或按主键更新 -->
+          <insert id="insertOrUpdateBatch" keyProperty="id" useGeneratedKeys="true">
+              insert into cloud_study.payment(<include refid="insert_column"/>)
+              values
+              <foreach collection="entities" item="entity" separator=",">
+                  (#{entity.serial})
+              </foreach>
+              on duplicate key update
+               serial = values(serial)          
+          </insert>
+      
+      </mapper>
+      ```
+
+4. 创建 `service`
+
+   1. 接口
+
+      ```java
+      package com.lyl.springcloud.service;
+      
+      import com.baomidou.mybatisplus.extension.service.IService;
+      import com.lyl.springcloud.entity.Payment;
+      
+      /**
+       * (Payment)表服务接口
+       *
+       * @author 罗亚龙
+       * @since 2022-01-21 11:08:34
+       */
+      public interface PaymentService extends IService<Payment> {
+          
+      }
+      ```
+
+   2. 实现类
+
+      ```java
+      package com.lyl.springcloud.service.impl;
+      
+      import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+      import com.lyl.springcloud.dao.PaymentDao;
+      import com.lyl.springcloud.entity.Payment;
+      import com.lyl.springcloud.service.PaymentService;
+      import org.springframework.stereotype.Service;
+      
+      /**
+       * (Payment)表服务实现类
+       *
+       * @author 罗亚龙
+       * @since 2022-01-21 11:08:34
+       */
+      @Service("paymentService")
+      public class PaymentServiceImpl extends ServiceImpl<PaymentDao, Payment> implements PaymentService {
+      
+      }
+      ```
+
+5. 创建 `controller`
+
+   ```java
+   package com.lyl.springcloud.controller;
+   
+   import com.lyl.springcloud.entity.Payment;
+   import com.lyl.springcloud.entity.Result;
+   import com.lyl.springcloud.service.PaymentService;
+   import org.springframework.web.bind.annotation.*;
+   
+   import javax.annotation.Resource;
+   
+   /**
+    * @author 罗亚龙
+    * @date 2022/1/21 11:15
+    */
+   @RestController
+   @RequestMapping("/payment")
+   public class PaymentController {
+       @Resource
+       private PaymentService paymentService;
+   
+       /**
+        * 创建一个支付数据
+        * @param payment 请求参数
+        * @return 执行结果
+        */
+       @PostMapping("/create")
+       public Result create(@RequestBody Payment payment) {
+           boolean save = paymentService.save(payment);
+           return save ? Result.success("添加成功") : Result.fail("添加失败");
+       }
+   
+       /**
+        * 通过id查询支付数据
+        * @param id id
+        * @return 支付数据
+        */
+       @GetMapping("{id:\\d+}")
+       public Result getById(@PathVariable("id") Long id){
+           Payment payment = paymentService.getById(id);
+           return Result.success("查询成功",payment);
+       }
+   }
+   ```
+
+6. 统计返回结果类
+
+   ```java
+   package com.lyl.springcloud.entity;
+   
+   import cn.hutool.core.collection.ListUtil;
+   import lombok.AllArgsConstructor;
+   import lombok.Data;
+   import lombok.NoArgsConstructor;
+   import lombok.experimental.Accessors;
+   
+   /**
+    * @author 罗亚龙
+    * @date 2022/1/21 13:14
+    */
+   @Data
+   @Accessors(chain = true)
+   @NoArgsConstructor
+   @AllArgsConstructor
+   public class Result {
+   
+       private Integer code;
+       private String msg;
+       private Object data = ListUtil.empty();
+       
+       public static Result success(){
+           return success ("操作成功");
+       }
+   
+       public static Result success(String msg) {
+           return success(msg,ListUtil.empty());
+       }
+   
+   
+       public static Result success(Object data) {
+           return success("操作成功", data);
+       }
+   
+       public static Result success(String msg, Object data) {
+           return success(200, msg, data);
+       }
+   
+       public static Result success(Integer code, String msg, Object data){
+           return new Result(code,msg,data);
+       }
+   
+   
+       public static Result fail() {
+           return fail("操作失败");
+       }
+   
+       public static Result fail(String msg) {
+           return fail(400, msg);
+       }
+   
+       public static Result fail(Integer code, String msg) {
+           return fail(code, msg, ListUtil.empty());
+       }
+   
+       public static Result fail(Object data) {
+           return fail(400,"操作失败" , data);
+       }
+   
+       public static Result fail(Integer code, String msg, Object data){
+           return new Result(code,msg,data);
+       }
+       
+   }
+   ```
+
+所有的类创建完成之后，启动项目，进行测试
+
+
+
+## 6. 订单模块
+
+### 6.1 新建模块
+
+创建模块，按照几个步骤 ，依次创建
+
+新建一个名称为 `cloud-consumer-order80` 的 `maven` 子模块
+
+### 6.2 改 `pom`
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <parent>
+        <artifactId>CloudStudy</artifactId>
+        <groupId>com.lyl</groupId>
+        <version>1.0-SNAPSHOT</version>
+    </parent>
+    <modelVersion>4.0.0</modelVersion>
+
+    <artifactId>cloud-consumer-order80</artifactId>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-devtools</artifactId>
+            <scope>runtime</scope>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+
+</project>
+```
+
+### 6.3 改 `yml`
+
+```yaml
+server:
+  port: 80
+spring:
+  application:
+    name: cloud-order-service
+```
+
+### 6.4 主启动
+
+```java
+package com.lyl.springcloud;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+/**
+ * @author 罗亚龙
+ * @date 2022/1/21 14:04
+ */
+@SpringBootApplication
+public class OrderMain80 {
+
+    public static void main(String[] args) {
+        SpringApplication.run(OrderMain80.class,args);
+    }
+    
+}
+```
