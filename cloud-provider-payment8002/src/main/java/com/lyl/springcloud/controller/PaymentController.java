@@ -7,7 +7,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
-import javax.validation.Valid;
 
 /**
  * @author 罗亚龙
@@ -18,6 +17,7 @@ import javax.validation.Valid;
 public class PaymentController {
     @Resource
     private PaymentService paymentService;
+
 
     @Value("${server.port}")
     private Integer serverPort;

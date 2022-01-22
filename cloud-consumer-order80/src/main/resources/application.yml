@@ -3,3 +3,14 @@ server:
 spring:
   application:
     name: cloud-order-service
+
+eureka:
+  client:
+    #表示是否向eureka注册自己
+    register-with-eureka: true
+    #表示是否需要从 eureka-server 抓取已有的注册信息，单节点无所谓，集群必须为true
+    fetch-registry: true
+    service-url:
+      #注册中心地址
+#      defaultZone: http://localhost:7001/eureka  #单机版
+      defaultZone: http://eureka7001.com:7001/eureka,http://eureka7002.com:7002/eureka
