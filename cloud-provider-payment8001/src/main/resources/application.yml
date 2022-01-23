@@ -27,6 +27,12 @@ eureka:
     #访问路径是否显示ip地址
     prefer-ip-address: true
 
+    # 配置心跳时间
+#    #Eureka客户端向服务端发送心跳的时间间隔，单位为秒（默认30秒）
+#    lease-renewal-interval-in-seconds: 1
+#    # Eureka 服务端在收到最后一次心跳后等待时间上限，单位为秒（默认是90秒），超时将会被剔除
+#    lease-expiration-duration-in-seconds: 2
+
 mybatis-plus:
   type-aliases-package: com.lyl.springcloud.entity    #别名
   mapper-locations: classpath:mapper/*.xml

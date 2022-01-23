@@ -3,16 +3,20 @@ package com.lyl.springcloud.controller;
 import com.lyl.springcloud.entity.Payment;
 import com.lyl.springcloud.entity.Result;
 import com.lyl.springcloud.service.PaymentService;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cloud.client.ServiceInstance;
+import org.springframework.cloud.client.discovery.DiscoveryClient;
 import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
-import javax.validation.Valid;
+import java.util.List;
 
 /**
  * @author 罗亚龙
  * @date 2022/1/21 11:15
  */
+@Slf4j
 @RestController
 @RequestMapping("/payment")
 public class PaymentController {
@@ -21,6 +25,25 @@ public class PaymentController {
 
     @Value("${server.port}")
     private Integer serverPort;
+
+    @Resource
+    private DiscoveryClient discoveryClient;
+
+    @GetMapping("/discovery")
+    public Object discovery(){
+        List<String> services = discoveryClient.getServices();
+        //获取所有的服务名称
+        for (String service : services) {
+            log.info("***** 服务名称: " + service);
+        }
+
+        List<ServiceInstance> instances = discoveryClient.getInstances("CLOUD-PAYMENT-SERVICE");
+        log.info("服务名ID\t主机\t端口号\tURI");
+        for (ServiceInstance instance : instances) {
+            log.info(instance.getServiceId() + "\t" + instance.getHost() + "\t" + instance.getPort() + "\t" + instance.getUri());
+        }
+        return discoveryClient;
+    }
 
     /**
      * 创建一个支付数据

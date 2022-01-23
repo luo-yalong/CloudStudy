@@ -2,9 +2,27 @@
 
 ​		上一篇，回顾了项目搭建的基本流程，同时完成了订单模块和支付模块的开发。本章将开始整合SpringCloud的各种技术。属于初级篇
 
-## 1. Eureka 服务服务注册与发现
+## 1. Eureka ❌
 
 ### 1.1 Eureka 基础知识
+
+1. **什么是服务治理**
+
+   ​		Spring Cloud封装了 `Netflix` 公司开发的 `Eureka` 模块来实现服务治理
+
+   ​		在传统的 `rpc` 远程调用框架中，管理每个服务与服务之前的依赖关系比较复杂，管理比较复杂，所以需要使用服务hi里，管理服务与服务之间的依赖关系，可以使用服务调用、负载均衡、容错等，实现服务的注册与发现。
+
+2. **什么是服务注册与发现**
+
+   ​		Eureka包含两个组件：`Eureka Server`和`Eureka Client`。
+
+   ​		`Eureka Server`提供服务注册服务，各个节点启动后，会在`Eureka Server`中进行注册，这样`EurekaServer`中的服务注册表中将会存储所有可用服务节点的信息，服务节点的信息可以在界面中直观的看到。
+
+   ​		`Eureka Client`是一个[java](https://baike.baidu.com/item/java/85979)客户端，用于简化与`Eureka Server`的交互，客户端同时也就是一个内置的、使用轮询(`round-robin`)负载算法的[负载均衡器](https://baike.baidu.com/item/负载均衡器/8852239)。
+
+   ​		在应用启动后，将会向`Eureka Server`发送心跳,默认周期为30秒，如果`Eureka Server`在多个心跳周期内没有接收到某个节点的心跳，`Eureka Server`将会从服务注册表中把这个服务节点移除(默认90秒)。
+
+   ​		Eureka Server之间通过复制的方式完成数据的同步，Eureka还提供了客户端缓存机制，即使所有的`Eureka Server`都挂掉，客户端依然可以利用缓存中的信息消费其他服务的API。综上，Eureka通过心跳检查、[客户端缓存](https://baike.baidu.com/item/客户端缓存/10237000)等机制，确保了系统的高可用性、灵活性和可伸缩性。
 
 ![image-20220122174930114](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-22/6ba138096738737d4e2c843a671c4946.jpeg)
 
@@ -845,3 +863,551 @@ eureka:
     <artifactId>spring-boot-starter-actuator</artifactId>
 </dependency>
 ```
+
+### 1.9 服务发现 `Discovery`
+
+​		**功能： ** 对于注册进 `Eureka` 里面的微服务，可以通过服务发现来获得该服务的信息
+
+​		需要在==主启动==类上面添加注解 `@EnableDiscoveryClient`
+
+#### 1.9.1 修改 `cloud-provider-payment8001` 中 `PaymentController`
+
+​		向里面注入 `DiscoveryClient` ，并编写一个接口来发现服务
+
+```java
+@Resource
+private DiscoveryClient discoveryClient;
+
+@GetMapping("/discovery")
+public Object discovery(){
+    List<String> services = discoveryClient.getServices();
+    //获取所有的服务名称
+    for (String service : services) {
+        log.info("***** 服务名称: " + service);
+    }
+
+    List<ServiceInstance> instances = discoveryClient.getInstances("CLOUD-PAYMENT-SERVICE");
+    log.info("服务名ID\t主机\t端口号\tURI");
+    for (ServiceInstance instance : instances) {
+        log.info(instance.getServiceId() + "\t" + instance.getHost() + "\t" + instance.getPort() + "\t" + instance.getUri());
+    }
+    return discoveryClient;
+}
+```
+
+#### 1.9.2 测试
+
+​		等待重启，或者手工重启，调用接口。
+
+![image-20220123104114769](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-23/72a7688edb123eb849b59163efc446ae.jpeg)
+
+控制台打印
+
+![image-20220123104151157](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-23/a5bdccf2991bf780ff7c3f2a3676f2f4.jpeg)
+
+按照同样的方式修改 `cloud-provider-payment8002`
+
+### 1.10 Eureka自我保护
+
+#### 1.10.1 故障现象
+
+​		概述：保护模式是一组客户端和 Eureka Server之前存在着网络分区场景下的保护，一旦进保护模式。`Eureka Server` 将会尝试==保护其服务注册表中的信息，不在删除服务注册表中的数据，也就是不会注销任务微服务==。
+
+​		如果在 `Eureka Server` 首页看到了以下提示，则说明 `Eureka` 进入了==保护模式==
+
+![image-20220123105331520](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-23/0c043ae69768361a5041b17137bbf615.jpeg)
+
+#### 1.10.2 导致原因
+
+**一句话：某时刻某一个微服务不可用了，`Eureka` 不会立即清理，依旧会对该微服务的信息进行保存**
+
+> **设计思想**： 属于 CAP 里面的 AP 分支
+
+1. **为什么会产生 `Eureka` 自我保护机制？**
+
+   ​		为了防止 `Eureka Client` 可以正常运行，但是 与 `Eureka Server` 网络不通情况下，`Eureka Server` 不会立刻将 `Eureka Client`  服务剔除
+
+2. **什么是自我保护模式 服务？**
+
+   ​		默认情况下，如果 `Eureka Server` 在一定时间内没有接收到某个微服务实力实例的心跳， `Eureka Server` 将会注销该实例 （默认90秒）。但是当网络分区故障的发生（延时、卡顿、拥挤）时，微服务与 `Eureka Server` 之间无法保证正常的通信，以上行为可能变得非常危险了 ------ 因为微服务本身其实是健康的，==此时本不应该注销这个微服务== 。`Eureka` 通过自我保护模式 来解决这个问题  ------ 当 `Eureka Server` 节点在短时间内丢失过多客户端时（此时可能发生了网络分区故障），那个这个节点就会进入自我保护模式。 
+
+   ![image-20220123110620345](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-23/2a15ce9c98cfb12e25019d2bf7b24286.jpeg)
+
+3. **总结**
+
+   ​		在自我保护模式下，`Eureka Server` 会保护服务注册表中的信息，不会注销任何服务实例。它的设计哲学就是宁可保留错误的服务注册信息，也不盲目注销任何可能健康的服务实例。
+
+   ​		综上，自我保护模式是一种应对网络异常的安全保护模式，它的架构哲学是宁可同时保留所有微服务（健康的微服务和不健康的微服务）也不盲目注销任何健康的微服务。使用自我保护模式，可以让 `Eureka` 集群更加的健壮、稳定。
+
+#### 1.10.3 禁用自我保护模式
+
+1. 在 `Eureka` 中心配置 关闭自我保护模式
+
+   1. 修改 `cloud-eureka-server7001`  模块的 `yml` 文件
+
+      ```yaml
+      eureka:
+          server:
+                # 关闭自我保护机制，保证不可用服务被及时删除
+                enable-self-preservation: false
+                # 如果一定时间内没有发送心跳包，就注销服务
+                eviction-interval-timer-in-ms: 2000
+      ```
+
+   2. **完整代码**
+
+      ```yml
+      server:
+        port: 7001
+      eureka:
+        instance:
+          hostname: eureka7001.com
+        client:
+          #false 表示不向eureka注册自己
+          register-with-eureka: false
+          #false 表示自己就是注册中心，职责就是维护实例，不需要检索服务
+          fetch-registry: false
+          service-url:
+            #设置和 eureka server 交互的地址查询服务和注册服务都需要依赖这个地址
+            defaultZone: http://eureka7002.com:7002/eureka
+        server:
+          # 关闭自我保护机制，保证不可用服务被及时删除
+          enable-self-preservation: false
+          # 如果一定时间内没有发送心跳包，就注销服务
+          eviction-interval-timer-in-ms: 2000
+      ```
+
+   3. **重启，查看关闭效果**
+
+      ![image-20220123112910540](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-23/1d7a1e21effd7f03a94ddabf680da102.jpeg)
+
+2. 修改 `cloud-provider-payment8001`  
+
+   1. 修改 `yml` 
+
+      ```yml
+      eureka:
+          instance:
+              #Eureka客户端向服务端发送心跳的时间间隔，单位为秒（默认30秒）
+              lease-renewal-interval-in-seconds: 1
+              # Eureka 服务端在收到最后一次心跳后等待时间上限，单位为秒（默认是90秒），超时将会被剔除
+              lease-expiration-duration-in-seconds: 2
+      ```
+
+   2. 完整代码
+
+      ```yml
+      server:
+        port: 8001
+      
+      spring:
+        application:
+          name: cloud-payment-service
+        datasource:
+          type: com.alibaba.druid.pool.DruidDataSource            # 当前数据源操作类型
+          driver-class-name: com.mysql.cj.jdbc.Driver              # mysql驱动包
+          url: jdbc:mysql://121.89.199.231:3306/cloud_study?useUnicode=true&characterEncoding=utf-8&useSSL=false
+          username: root
+          password: Lyl123456
+      
+      eureka:
+        client:
+          #表示是否向eureka注册自己
+          register-with-eureka: true
+          #表示是否需要从 eureka-server 抓取已有的注册信息，单节点无所谓，集群必须为true
+          fetch-registry: true
+          service-url:
+            #注册中心地址
+      #      defaultZone: http://localhost:7001/eureka  #单机版
+            defaultZone: http://eureka7001.com:7001/eureka,http://eureka7002.com:7002/eureka  #集群版
+        instance:
+          #实例id,显示在Eureka注册中心的名字，默认是ip地址+端口号
+          instance-id: Payment8001
+          #访问路径是否显示ip地址
+          prefer-ip-address: true
+          #Eureka客户端向服务端发送心跳的时间间隔，单位为秒（默认30秒）
+          lease-renewal-interval-in-seconds: 1
+          # Eureka 服务端在收到最后一次心跳后等待时间上限，单位为秒（默认是90秒），超时将会被剔除
+          lease-expiration-duration-in-seconds: 2
+      
+      mybatis-plus:
+        type-aliases-package: com.lyl.springcloud.entity    #别名
+        mapper-locations: classpath:mapper/*.xml
+      ```
+
+   3. 测试
+
+      ​		依次启动 `Eureka` 注册中心和 `支付服务8001` ，查看`Eureka Server` 首页
+
+      ![image-20220123114209631](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-23/3b66a38e11d97b9410f8dfb51245fdb2.jpeg)
+
+      手动关闭 `支付模块8001` 假设出故障了
+
+      ![`image-20220123131129073`](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-23/6e9578d66825a508f26bf85abf738d6c.jpeg)
+
+### 1.11 `Eureka` 停止更新
+
+​		官网上说：已经对 `Eureka` 停止更新了 ，可以使用 `Zookeeper` 替换 `Eureka`
+
+## 2. Zookeeper
+
+> 在开始之前，确保已经搭建好了 `zookeeper` 环境
+
+**简介**
+
+​		`zookeeper` 是一个 分布式协调工具，可以实现注册中心的功能
+
+**安装Zookeeper**
+
+​		[windows环境下安装zookeeper教程详解（单机版）_风轩雨墨的博客-CSDN博客_zookeeper安装教程](https://blog.csdn.net/qq_33316784/article/details/88563482)
+
+### 2.1 支付模块注册进 `Zookeeper`
+
+#### 2.1.1 新建支付模块
+
+​		新建一个名为 `cloud-provider-payment8004` 的模块。此模块只是演示注册，所以去掉`mybatis-plus`、`Mysql` 等一些其他依赖
+
+#### 2.1.2 改 `pom`
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <parent>
+        <artifactId>CloudStudy</artifactId>
+        <groupId>com.lyl</groupId>
+        <version>1.0-SNAPSHOT</version>
+    </parent>
+    <modelVersion>4.0.0</modelVersion>
+
+    <artifactId>cloud-provider-payment8004</artifactId>
+
+    <dependencies>
+
+        <!--zookeeper-->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-zookeeper-discovery</artifactId>
+        </dependency>
+
+        <!--公共模块-->
+        <dependency>
+            <groupId>com.lyl</groupId>
+            <artifactId>cloud-api-common</artifactId>
+            <version>1.0-SNAPSHOT</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-devtools</artifactId>
+            <scope>runtime</scope>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>
+```
+
+#### 2.1.3 改 `yml`
+
+```yml
+server:
+  port: 8004
+
+#服务别名，注册zookeeper到注册中心名称
+spring:
+  application:
+    name: cloud-payment-service
+  cloud:
+    zookeeper:
+      connect-string: localhost:2181
+```
+
+#### 2.1.4 主启动
+
+```java
+package com.lyl.springcloud;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
+
+/**
+ * @author 罗亚龙
+ * @date 2022/1/23 13:41
+ */
+@SpringBootApplication
+@EnableDiscoveryClient
+public class PaymentMain8004 {
+    public static void main(String[] args) {
+        SpringApplication.run(PaymentMain8004.class,args);
+    }
+}
+```
+
+#### 2.1.5 业务类
+
+```java
+package com.lyl.springcloud.controller;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.UUID;
+
+/**
+ * @author 罗亚龙
+ * @date 2022/1/21 11:15
+ */
+@RestController
+@RequestMapping("/payment")
+public class PaymentController {
+
+
+    @Value("${server.port}")
+    private Integer serverPort;
+
+    /**
+     * 获取注册进zookeeper服务的端口号
+     * @return
+     */
+    @GetMapping("/zk")
+    public String paymentZk(){
+        return "Spring Cloud with Zookeeper: " + serverPort + "\t" + UUID.randomUUID().toString();
+    }
+}
+```
+
+#### 2.1.6 测试
+
+1. 启动本地的 `zookeeper` 服务
+
+   ​		打开本地的 `zookeeper`安装目录，到 `bin` 目录下，双击 `zkServer.cmd`
+
+   ![image-20220123154259283](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-23/54608b3523ad0af2702fb35903d31429.jpeg)
+
+2. 启动本地的 `zookeeper` 客户端
+
+   ​		同样，在 `zookeeper`安装目录下 `bin` 文件夹红，双击 `zkCli.cmd`
+
+   ![image-20220123154513309](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-23/0faa5eee7e25507c4f33bcda9afddd44.jpeg)
+
+   **查看所有的服务**
+
+   ```
+   ls /
+   ```
+
+   ![image-20220123155416467](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-23/c3be72646da7c2ffb67b2ddf65c7803e.jpeg)
+
+3. 启动支付模块，可以看到 `services` 中出现  支付模块的服务别名
+
+   ![image-20220123154911929](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-23/20ab2b0f180b83dd9345876cc37fcd65.jpeg)
+
+4. 测试接口
+
+   访问 http://localhost:8004/payment/zk
+
+   ![image-20220123155627627](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-23/9b1eab72f1dd7b49d8ab4297bbc31936.jpeg)
+
+5. 服务节点是临时节点还是持久节点
+
+   结论： 是临时节点。
+
+   ![image-20220123161618862](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-23/88904b7e36dfce728d5e981ea998a1a0.jpeg)
+
+### 2.2 订单服务注册进 `Zookeeper`
+
+#### 2.2.1 新建模块
+
+​		新建一个名为 `cloud-consumer-zk-order80` 模块
+
+#### 2.2.2 改 `pom`
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <parent>
+        <artifactId>CloudStudy</artifactId>
+        <groupId>com.lyl</groupId>
+        <version>1.0-SNAPSHOT</version>
+    </parent>
+    <modelVersion>4.0.0</modelVersion>
+
+    <artifactId>cloud-consumer-zk-order80</artifactId>
+
+    <dependencies>
+
+        <!--zookeeper-->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-zookeeper-discovery</artifactId>
+        </dependency>
+
+        <!--公共模块-->
+        <dependency>
+            <groupId>com.lyl</groupId>
+            <artifactId>cloud-api-common</artifactId>
+            <version>1.0-SNAPSHOT</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-devtools</artifactId>
+            <scope>runtime</scope>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>
+```
+
+#### 2.2.3 改 `yml` 
+
+```yml
+server:
+  port: 80
+
+#服务别名，注册zookeeper到注册中心名称
+spring:
+  application:
+    name: cloud-order-zk-service
+  cloud:
+    zookeeper:
+      connect-string: localhost:2181
+```
+
+#### 2.2.4 主启动
+
+```java
+package com.lyl.springcloud;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
+
+/**
+ * @author 罗亚龙
+ * @date 2022/1/23 16:29
+ */
+@SpringBootApplication
+@EnableDiscoveryClient
+public class OrderZkMain80 {
+    public static void main(String[] args) {
+        SpringApplication.run(OrderZkMain80.class,args);
+    }
+}
+```
+
+#### 2.2.5 业务类
+
+1. **配置类**
+
+   ```java
+   package com.lyl.springcloud.config;
+   
+   import org.springframework.cloud.client.loadbalancer.LoadBalanced;
+   import org.springframework.context.annotation.Bean;
+   import org.springframework.context.annotation.Configuration;
+   import org.springframework.web.client.RestTemplate;
+   
+   /**
+    * @author 罗亚龙
+    * @date 2022/1/23 16:28
+    */
+   @Configuration
+   public class ApplicationContextConfig {
+   
+       @Bean
+       @LoadBalanced
+       public RestTemplate restTemplate(){
+           return new RestTemplate();
+       }
+   }
+   ```
+
+2. **控制器**
+
+   ```java
+   package com.lyl.springcloud.controller;
+   
+   import lombok.extern.slf4j.Slf4j;
+   import org.springframework.web.bind.annotation.GetMapping;
+   import org.springframework.web.bind.annotation.RestController;
+   import org.springframework.web.client.RestTemplate;
+   
+   import javax.annotation.Resource;
+   
+   /**
+    * @author 罗亚龙
+    * @date 2022/1/23 16:31
+    */
+   @RestController
+   @Slf4j
+   public class OrderController {
+   
+       public static final String INVOKE_URL = "http://cloud-payment-service";
+   
+       @Resource
+       private RestTemplate restTemplate;
+       
+       @GetMapping("/consumer/payment/zk")
+       public String getPaymentInfo(){
+           return restTemplate.getForObject(INVOKE_URL + "/payment/zk", String.class);
+       }
+   }
+   ```
+
+#### 2.2.6 测试
+
+1. 查看 `zookeeper` 客户端的服务名称
+
+   ![image-20220123163611557](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-23/e0a4c78e8439fa6ebe50a2b7222872a4.jpeg)
+
+2. 查看接口
+
+   调用 http://localhost/consumer/payment/zk
+
+   ![image-20220123163734698](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-23/532206f564df147f203256b988851ca7.jpeg)
+
