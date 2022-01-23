@@ -186,7 +186,7 @@ https://start.spring.io/actuator/info
 
 ![image-20220120220424466](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-20/28dcfe8f67a6937ef7f56d9feee96aeb.jpeg)
 
-## 5. 订单支付模块
+## 5. 支付模块
 
 **新建模块通用流程**
 
@@ -706,3 +706,280 @@ public class OrderMain80 {
     
 }
 ```
+
+### 6.5 业务类
+
+1. 实体类和通用返回实体，拷贝 `支付模块` 的实体类
+
+2. 配置类
+
+   ```java
+   package com.lyl.springcloud.config;
+   
+   import org.springframework.context.annotation.Bean;
+   import org.springframework.context.annotation.Configuration;
+   import org.springframework.web.client.RestTemplate;
+   
+   /**
+    * @author 罗亚龙
+    * @date 2022/1/21 14:26
+    */
+   @Configuration
+   public class ApplicationContextConfig {
+   
+       @Bean
+       public RestTemplate restTemplate(){
+           return new RestTemplate();
+       }
+   }
+   ```
+
+3. 控制器
+
+   ```java
+   package com.lyl.springcloud.controller;
+   
+   import com.lyl.springcloud.entity.vo.PaymentVo;
+   import com.lyl.springcloud.entity.Result;
+   import org.springframework.web.bind.annotation.*;
+   import org.springframework.web.client.RestTemplate;
+   
+   import javax.annotation.Resource;
+   
+   /**
+    * @author 罗亚龙
+    * @date 2022/1/21 14:07
+    */
+   @RestController
+   @RequestMapping("/consumer")
+   public class OrderController {
+       public static final String PAYMENT_URL = "http://localhost:8001";
+       @Resource
+       private RestTemplate restTemplate;
+   
+       /**
+        * 创建一个支付数据
+        * @param payment 请求参数
+        * @return 执行结果
+        */
+       @PostMapping("/payment/create")
+       public Result create(@RequestBody PaymentVo payment) {
+           return restTemplate.postForObject(PAYMENT_URL + "/payment/create", payment,Result.class);
+       }
+   
+       /**
+        * 通过id查询支付数据
+        * @param id id
+        * @return 支付数据
+        */
+       @GetMapping("/payment/{id:\\d+}")
+       public Result getById(@PathVariable("id") Long id){
+           return restTemplate.getForObject(PAYMENT_URL + "/payment/" + id,Result.class);
+       }
+   
+   
+   }
+   ```
+
+### 6.6 测试
+
+使用 `postman` 来测试接口
+
+测试之前，启动两个项目，在启动的时候，`idea` 会出现 `Services` 窗口，方便我们管理各个服务
+
+![image-20220121152711217](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-21/60844e39fc0444477b283a94fde3635b.jpeg)
+
+**测试订单发起支付**
+
+![image-20220121152430901](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-21/d09731bca9f4e9451cfc5400b4214161.jpeg)
+
+**测试订单查询支付**
+
+![image-20220121152528571](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-21/1d41b4631a23c9fdf3b94d650524cd71.jpeg)
+
+## 7. 工程重构
+
+​		我们发现在 `订单模块` 和 `支付模块` 中都存着相同的 `entity` ，有一种代码坏味道的感觉，所以，我们将公共的部分，抽取出来，形成一个新模块。
+
+### 7.1 新建项目
+
+​		新建一个 `cloud-api-common`  的新模块，存放公共的类
+
+### 7.2 改 `pom`
+
+```java
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <parent>
+        <artifactId>CloudStudy</artifactId>
+        <groupId>com.lyl</groupId>
+        <version>1.0-SNAPSHOT</version>
+    </parent>
+    <modelVersion>4.0.0</modelVersion>
+
+    <artifactId>cloud-api-common</artifactId>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>cn.hutool</groupId>
+            <artifactId>hutool-all</artifactId>
+        </dependency>
+    </dependencies>
+
+
+</project>
+```
+
+### 7.3 业务类
+
+​			由于此模块只存放一些公共类，所以不需要配置 `yml` ， 也可以将项目路径下的 `test` 文件夹 和 `resources` 文件夹删除。
+
+同时，由于此项目不需要启动，所以，不用编写启动类。又因为  原始 `Payment` 实体类中包含 `mybatis-plus` 中的注解 `@TableId(type = IdType.AUTO)` ，所以我们需要修改新添加一个 `PaymentVo`实体类，去掉其中的 报错的注解。
+
+**新的实体类 `PaymentVo`**
+
+```java
+package com.lyl.springcloud.entity.vo;
+
+import lombok.Data;
+import lombok.experimental.Accessors;
+
+import java.math.BigInteger;
+
+/**
+ * (Payment)表实体类
+ *
+ * @author 罗亚龙
+ * @since 2022-01-21 11:08:34
+ */
+@Data
+@Accessors(chain = true)
+public class PaymentVo {
+
+
+    private BigInteger id;
+
+    /**
+     * serial
+     */
+    private String serial; 
+
+}
+```
+
+**通用返回实体包装类**
+
+```java
+package com.lyl.springcloud.entity;
+
+import cn.hutool.core.collection.ListUtil;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import lombok.experimental.Accessors;
+
+/**
+ * @author 罗亚龙
+ * @date 2022/1/21 13:14
+ */
+@Data
+@Accessors(chain = true)
+@NoArgsConstructor
+@AllArgsConstructor
+public class Result {
+
+    private Integer code;
+    private String msg;
+    private Object data = ListUtil.empty();
+    
+    public static Result success(){
+        return success ("操作成功");
+    }
+
+    public static Result success(String msg) {
+        return success(msg,ListUtil.empty());
+    }
+
+
+    public static Result success(Object data) {
+        return success("操作成功", data);
+    }
+
+    public static Result success(String msg, Object data) {
+        return success(200, msg, data);
+    }
+
+    public static Result success(Integer code, String msg, Object data){
+        return new Result(code,msg,data);
+    }
+
+
+    public static Result fail() {
+        return fail("操作失败");
+    }
+
+    public static Result fail(String msg) {
+        return fail(400, msg);
+    }
+
+    public static Result fail(Integer code, String msg) {
+        return fail(code, msg, ListUtil.empty());
+    }
+
+    public static Result fail(Object data) {
+        return fail(400,"操作失败" , data);
+    }
+
+    public static Result fail(Integer code, String msg, Object data){
+        return new Result(code,msg,data);
+    }
+    
+}
+```
+
+
+
+---
+
+改完之后，需要修改 `cloud-consumer-order80` 模块 和 `cloud-provider-payment8001` 模块。
+
+1. 将`cloud-consumer-order80` 模块红 订单发起支付的接口 （`/payment/create`） 接口的入参 由 `Payment` 修改为 `PaymentVo`，如下：
+
+```java
+/**
+ * 创建一个支付数据
+ * @param payment 请求参数
+ * @return 执行结果
+ */
+@PostMapping("/payment/create")
+public Result create(@RequestBody PaymentVo payment) {
+    return restTemplate.postForObject(PAYMENT_URL + "/payment/create", payment,Result.class);
+}
+```
+
+2. 在 `pom` 文件中添加 公共模块的依赖
+
+   ```xml
+   <dependency>
+       <groupId>com.lyl</groupId>
+       <artifactId>cloud-api-common</artifactId>
+       <version>1.0-SNAPSHOT</version>
+   </dependency>
+   ```
+
+3. 删除模块中重复的实体类
+
+此时项目结构如图所示：
+
+![image-20220121154504760](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-21/968b0be51912d1b42f7c3d77fd2599e2.jpeg)
+
+**注意：修改完成之后，需要在父项目中中执行 `clean` 和`install` 操作**
+
+之后，启动项目，进行测试
+
