@@ -7,7 +7,7 @@ import org.springframework.web.client.RestTemplate;
 
 /**
  * @author 罗亚龙
- * @date 2022/1/21 14:26
+ * @date 2022/1/23 16:28
  */
 @Configuration
 public class ApplicationContextConfig {

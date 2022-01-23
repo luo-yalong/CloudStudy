@@ -1,5 +1,5 @@
 server:
-  port: 8001
+  port: 8002
 
 spring:
   application:
@@ -19,19 +19,13 @@ eureka:
     fetch-registry: true
     service-url:
       #注册中心地址
-#      defaultZone: http://localhost:7001/eureka  #单机版
+      #      defaultZone: http://localhost:7001/eureka  #单机版
       defaultZone: http://eureka7001.com:7001/eureka,http://eureka7002.com:7002/eureka  #集群版
   instance:
     #实例id,显示在Eureka注册中心的名字，默认是ip地址+端口号
-    instance-id: Payment8001
+    instance-id: Payment8002
     #访问路径是否显示ip地址
     prefer-ip-address: true
-
-    # 配置心跳时间
-#    #Eureka客户端向服务端发送心跳的时间间隔，单位为秒（默认30秒）
-#    lease-renewal-interval-in-seconds: 1
-#    # Eureka 服务端在收到最后一次心跳后等待时间上限，单位为秒（默认是90秒），超时将会被剔除
-#    lease-expiration-duration-in-seconds: 2
 
 mybatis-plus:
   type-aliases-package: com.lyl.springcloud.entity    #别名
