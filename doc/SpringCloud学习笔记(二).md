@@ -1411,3 +1411,397 @@ public class OrderZkMain80 {
 
    ![image-20220123163734698](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-23/532206f564df147f203256b988851ca7.jpeg)
 
+## 3. Consul 
+
+### 3.1 简介
+
+​		[官网](https://www.consul.io/intro/index.html)
+
+​		`Consul` 是一套开源的分布式服务发现和配置管理系统，由 `HashiCorp` 公司用 Go语言开发。
+
+​		提供了微服务系统中的服务治理、配置中心、控制总线等功能。这些功能中的每一个都可以根据需要单独使用，也可以一起使用以构建全方位的服务网格，总之 `Consul` 提供了一种完整的服务网格解决方案。
+
+​		它具有很多优点。包括：基于 `raft` 协议，比较简洁；支持健康检查，同时支持 HTTP 和 DNS 协议，支持跨数据中心的 `WAN` 集群 ，提供图形界面跨平台，支持 `Linux` 、`Mac` 、`Windows`
+
+**能干嘛**
+
+![image-20220123202131344](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-23/5581d8a70d5d22910cacc22c839b0db4.jpeg)
+
+**怎么下载**
+
+​		[官网下载](https://www.consul.io/downloads)
+
+**怎么玩**
+
+​		https://www.springcloud.cc/spring-cloud-consul.html
+
+### 3.2 安装并运行 `Consul`
+
+​		下载：[官网下载](https://www.consul.io/downloads)
+
+​		从官网下载对应系统的 `Consul`，并进行安装
+
+​		在命令行输入：`consul agent -dev` 启动 `consul`
+
+​		在浏览器中输入： http://localhost:8500 , 出现 `Consul` 的管理页面
+
+![image-20220123214603082](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-23/fcd68f1d8346040837b71cf2c6897ec0.jpeg)
+
+
+
+### 3.3 服务提供者
+
+#### 3.3.1 新建 `module`
+
+​		新建一个名为 `cloud-provider-consul-payment8006`的模块
+
+#### 3.3.2 改 `pom`
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <parent>
+        <artifactId>CloudStudy</artifactId>
+        <groupId>com.lyl</groupId>
+        <version>1.0-SNAPSHOT</version>
+    </parent>
+    <modelVersion>4.0.0</modelVersion>
+
+    <artifactId>cloud-provider-consul-payment8006</artifactId>
+
+    <properties>
+        <maven.compiler.source>8</maven.compiler.source>
+        <maven.compiler.target>8</maven.compiler.target>
+    </properties>
+
+    <dependencies>
+
+        <!--consul-->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-consul-discovery</artifactId>
+        </dependency>
+
+        <!--公共模块-->
+        <dependency>
+            <groupId>com.lyl</groupId>
+            <artifactId>cloud-api-common</artifactId>
+            <version>1.0-SNAPSHOT</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-devtools</artifactId>
+            <scope>runtime</scope>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+</project>
+```
+
+#### 3.3.3 改 `yml`
+
+```yml
+server:
+  port: 8006
+spring:
+  application:
+    name: cloud-payment-service
+#####consul注册中心地址
+  cloud:
+    consul:
+      host: localhost
+      port: 8500
+      discovery:
+        service-name: ${spring.application.name}
+```
+
+#### 3.3.4 主启动
+
+```java
+package com.lyl.springcloud;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
+
+@SpringBootApplication
+@EnableDiscoveryClient
+public class PaymentMain8006 {
+    public static void main(String[] args) {
+        SpringApplication.run(PaymentMain8006.class,args);
+    }
+}
+```
+
+#### 3.3.5 业务类
+
+```java
+package com.lyl.springcloud.controller;
+
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.UUID;
+
+@RestController
+@Slf4j
+@RequestMapping("/payment")
+public class PaymentController {
+
+    @Value("${server.port}")
+    private Integer serverPort;
+
+    /**
+     * 获取注册进zookeeper服务的端口号
+     * @return
+     */
+    @GetMapping("/consul")
+    public String paymentZk(){
+        return "Spring Cloud with Zookeeper: " + serverPort + "\t" + UUID.randomUUID().toString();
+    }
+}
+```
+
+#### 3.3.6 测试
+
+​		启动新模块之后，可以看到注册中心，出现了服务实例。
+
+![image-20220123214730703](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-23/304ce6650e512e9442703b3454de9299.jpeg)
+
+​		测试 http://localhost:8006/payment/consul ，可以看到每次都会变更流水id
+
+![image-20220123214809658](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-23/cd026a96e3ac60c1f04277b17f5d3676.jpeg)
+
+### 3.4 服务消费者
+
+#### 3.4.1 新建 `mudule`
+
+​		新建一个名为 `cloud-consumer-consul-order80` 的模块
+
+#### 3.4.2 改 `pom`
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <parent>
+        <artifactId>CloudStudy</artifactId>
+        <groupId>com.lyl</groupId>
+        <version>1.0-SNAPSHOT</version>
+    </parent>
+    <modelVersion>4.0.0</modelVersion>
+
+    <artifactId>cloud-consumer-consul-order80</artifactId>
+
+    <properties>
+        <maven.compiler.source>8</maven.compiler.source>
+        <maven.compiler.target>8</maven.compiler.target>
+    </properties>
+
+    <dependencies>
+
+        <!--consul-->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-consul-discovery</artifactId>
+        </dependency>
+
+        <!--公共模块-->
+        <dependency>
+            <groupId>com.lyl</groupId>
+            <artifactId>cloud-api-common</artifactId>
+            <version>1.0-SNAPSHOT</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-devtools</artifactId>
+            <scope>runtime</scope>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+</project>
+```
+
+#### 3.4.3 改 `yml`
+
+```yml
+server:
+  port: 80
+spring:
+  application:
+    name: cloud-order-service
+  #####consul注册中心地址
+  cloud:
+    consul:
+      host: localhost
+      port: 8500
+      discovery:
+        service-name: ${spring.application.name}
+```
+
+#### 3.4.4 主启动
+
+```java
+package com.lyl.springcloud;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
+
+@SpringBootApplication
+@EnableDiscoveryClient
+public class OrderConsulMain80 {
+    public static void main(String[] args) {
+        SpringApplication.run(OrderConsulMain80.class,args);
+    }
+}
+```
+
+#### 3.4.5 业务类
+
+**配置类**
+
+```java
+package com.lyl.springcloud.config;
+
+import org.springframework.cloud.client.loadbalancer.LoadBalanced;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.client.RestTemplate;
+
+@Configuration
+public class ApplicationContextConfig {
+    
+    @Bean
+    @LoadBalanced
+    public RestTemplate restTemplate(){
+        return new RestTemplate();
+    }
+}
+```
+
+**控制器**
+
+```java
+package com.lyl.springcloud.controller;
+
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.client.RestTemplate;
+
+import javax.annotation.Resource;
+
+@RestController
+@RequestMapping("/consumer")
+public class OrderController {
+
+    public static final String INVOKE_URL = "http://cloud-payment-service";
+
+    @Resource
+    private RestTemplate restTemplate;
+
+    @GetMapping("/payment/consul")
+    public String getPaymentInfo(){
+        return restTemplate.getForObject(INVOKE_URL + "/payment/consul", String.class);
+    }
+}
+```
+
+#### 3.4.6 测试
+
+​		启动新模块之后，可以看到注册中心，出现了服务实例。
+
+![image-20220123214903083](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-23/026e98446e4aae75046028deae61c7e5.jpeg)
+
+​		测试 http://localhost/consumer/payment/consul ，可以看到每次都会变更流水id
+
+![image-20220123214927185](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-23/cd10e5bc9b7415667d97be621de3164b.jpeg)
+
+关闭模块之后
+
+![image-20220123215043612](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-23/71a72bbfc1a80ccf46cc4f63677acc46.jpeg)
+
+## 4 三个注册中心异同点
+
+| 组件名      | 语言 | CAP  | 健康检查 | 对外暴露接口 | SpringCloud集成 |
+| ----------- | ---- | ---- | -------- | ------------ | --------------- |
+| `Eureka`    | Java | AP   | 可配支持 | HTTP         | 已集成          |
+| `Consul`    | Go   | CP   | 支持     | HTTP/DNS     | 已集成          |
+| `Zookeeper` | Java | CP   | 支持     | 客户端       | 已集成          |
+
+**CAP**
+
+​		CAP原则又称CAP定理，指的是在一个分布式系统中，[一致性](https://baike.baidu.com/item/一致性/9840083)（Consistency）、[可用性](https://baike.baidu.com/item/可用性/109628)（Availability）、[分区容错性](https://baike.baidu.com/item/分区容错性/23734073)（Partition tolerance）。CAP 原则指的是，这三个[要素](https://baike.baidu.com/item/要素/5261200)最多只能同时实现两点，不可能三者兼顾。
+
+- **C:  Consistency（强一致性）**
+- **A:  Availability (可用性)**
+- **P:  Partition tolerance (分区容错性)**
+
+![img](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-23/c3af204999d3f6825f046c8b14538b65.jpeg)
+
+> CAP理论关注粒度是数据，而不是整体系统涉及的策略
+
+`Eureka` 属于 `AP` 架构
+
+​		当网络分区出现后，为了保证可用性，系统B可以返回旧值，保证系统的可用性。
+
+​		结论：违背了一致性 C 的要求，只满足可用性和分区容错性，即 `AP`
+
+![image-20220123213550719](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-23/e58be0afa601ac61d1cff4163857d85e.jpeg)
+
+`Zookeeper`/`Consul` 属于 `CP` 架构
+
+​		当网络分区出现后，为了保证一致性，就必须拒绝请求，否则无法保证一致性。
+
+​		结论：违背了可用性A的要求，只满足一致性和分区容错性，即 `CP`
+
+![image-20220123213839606](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-23/52faeb9217fe4328a07b9c3828159b51.jpeg)
