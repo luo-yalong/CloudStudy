@@ -2,6 +2,7 @@ package com.lyl.springcloud.controller;
 
 import com.lyl.springcloud.entity.vo.PaymentVo;
 import com.lyl.springcloud.entity.Result;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestTemplate;
 
@@ -39,6 +40,21 @@ public class OrderController {
     @GetMapping("/payment/{id:\\d+}")
     public Result getById(@PathVariable("id") Long id){
         return restTemplate.getForObject(PAYMENT_URL + "/payment/" + id,Result.class);
+    }
+
+    /**
+     * 使用 getForEntity
+     * @param id
+     * @return
+     */
+    @GetMapping("/payment/getForEntity/{id:\\d+}")
+    public Result getForEntityById(@PathVariable("id") Long id){
+        ResponseEntity<Result> responseEntity = restTemplate.getForEntity(PAYMENT_URL + "/payment/" + id, Result.class);
+        if (responseEntity.getStatusCode().is2xxSuccessful()){
+            return responseEntity.getBody();
+        }else {
+            return Result.fail(444,"操作失败");
+        }
     }
 
 

@@ -1805,3 +1805,166 @@ public class OrderController {
 ​		结论：违背了可用性A的要求，只满足一致性和分区容错性，即 `CP`
 
 ![image-20220123213839606](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-23/52faeb9217fe4328a07b9c3828159b51.jpeg)
+
+## 5. Ribbon负载均衡服务调用
+
+### 5.1 简介
+
+​		Spring Cloud Ribbon 是基于Netflix Ribbon实现的一套 ==客户端 负载均衡==的工具
+
+​		简单的来说，`Ribbon` 是 `Netflix` 发布的开源项目，主要功能是提供 ==客户端软件的负载均衡算法和服务调用==。`Ribbon` 客户端组件提供一系列完善的配置项如链接超时、重试等，简单的来说，就是在配置文件中列出 `Load Balance` （简称 `LB`），后面所有的机器，`Ribbon` 会自动的帮我们基于某种规则（如简单轮询，随机连接等） 去连接这些机器。我们很容易使用 `Ribbon` 实现自定义的负载均衡算法。
+
+**注意: `Ribbon` 目前进入了维护模式**
+
+![image-20220124133950155](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-24/e621cc4ada3ab403be45eab33e6bd38f.jpeg)
+
+### 5.2 LB（负载均衡）
+
+**集中式 LB**
+
+![image-20220124134155845](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-24/3ab6599b48f34d37e10d5a46b15f9166.jpeg)
+
+**进程内 `LB`**
+
+![image-20220124134122879](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-24/89508cda08e8dbc96651d49fb8676d49.jpeg)
+
+> `Ribbon` 就是 负载均衡 + RestTemplate调用
+
+### 5.3 `pom`
+
+​		消费者模块 `cloud-consumer-order80` 之前已经集成了 `spring-cloud-starter-netflix-eureka-client` ，所以我们不用再次添加依赖了。因为 `spring-cloud-starter-netflix-eureka-client` 中已经集成了 `spring-cloud-starter-netflix-ribbon` 依赖。
+
+![image-20220124135123667](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-24/1ecf5878ec97a774af9b027246012f7f.jpeg)
+
+​		如果想要添加的话，也可以添加，但是没有必要。
+
+```xml
+<dependency>
+  <groupId>org.springframework.cloud</groupId>
+  <artifactId>spring-cloud-starter-netflix-ribbon</artifactId>
+  <version>2.2.1.RELEASE</version>
+  <scope>compile</scope>
+</dependency>
+```
+
+### 5.4 Api方法调用
+
+​		`getForObject` 返回的是 `json` 字符串，而 `getForEntity` 返回了更加详细的信息，如：响应头、相应状态码、响应体等等。
+
+**getForObject**
+
+```java
+/**
+ * 通过id查询支付数据
+ * @param id id
+ * @return 支付数据
+ */
+@GetMapping("/payment/{id:\\d+}")
+public Result getById(@PathVariable("id") Long id){
+    return restTemplate.getForObject(PAYMENT_URL + "/payment/" + id,Result.class);
+}
+```
+
+**getForEntity**
+
+```java
+/**
+ * 使用 getForEntity
+ * @param id
+ * @return
+ */
+@GetMapping("/payment/getForEntity/{id:\\d+}")
+public Result getForEntityById(@PathVariable("id") Long id){
+    ResponseEntity<Result> responseEntity = restTemplate.getForEntity(PAYMENT_URL + "/payment/" + id, Result.class);
+    if (responseEntity.getStatusCode().is2xxSuccessful()){
+        return responseEntity.getBody();
+    }else {
+        return Result.fail(444,"操作失败");
+    }
+}
+```
+
+### 5.5 Ribbon核心组件 IRule
+
+​		`IRule` : 根据特定算法从服务列表中选取一个要访问的服务
+
+​		以下是 `Ribbon` 自带的负载均衡算法
+
+![image-20220124140858574](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-24/b84a3ffaae22df963c9c84b01557bad7.jpeg)
+
+### 5.6 替换负载规则
+
+#### 5.6.1 修改 `cloud-consumer-order80` 
+
+​		修改负载规则的时候，不能在 可以被 `@ComponentScan` 扫描到的包以及子包中，需要新建一个在 `OrderMain80` 的上级目录创建一个包。
+
+![image-20220124142007860](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-24/dce9187ac82d4f4da6809b01c81768ee.jpeg)
+
+创建一个 `com.lyl.myrule` 的包，存放负载规则
+
+![image-20220124142050460](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-24/80b868001a4f20d7bcf7028ec8ef5625.jpeg)
+
+#### 5.6.2 新建配置类
+
+​		新建一个 `MySelfRule` 配置类，配置负载均衡规则。
+
+```java
+package com.lyl.myrule;
+
+import com.netflix.loadbalancer.IRule;
+import com.netflix.loadbalancer.RandomRule;
+import org.springframework.beans.factory.annotation.Configurable;
+import org.springframework.context.annotation.Bean;
+
+/**
+ * @author 罗亚龙
+ * @date 2022/1/24 14:22
+ */
+@Configurable
+public class MySelfRule {
+
+    @Bean
+    public IRule myRule(){
+        //定义为随机
+        return new RandomRule();
+    }
+}
+```
+
+#### 5.6.3 修改启动类
+
+​		启动类上添加注解 `@RibbonClient(name = "CLOUD-PAYMENT-SERVICE",configuration = MySelfRule.class)`，配置我们配置的负载规则。
+
+**完整代码**
+
+```java
+package com.lyl.springcloud;
+
+import com.lyl.myrule.MySelfRule;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.cloud.netflix.eureka.EnableEurekaClient;
+import org.springframework.cloud.netflix.ribbon.RibbonClient;
+
+/**
+ * @author 罗亚龙
+ * @date 2022/1/21 14:04
+ */
+@SpringBootApplication
+@EnableEurekaClient
+@RibbonClient(name = "CLOUD-PAYMENT-SERVICE",configuration = MySelfRule.class)
+public class OrderMain80 {
+
+    public static void main(String[] args) {
+        SpringApplication.run(OrderMain80.class,args);
+    }
+
+}
+```
+
+#### 5.6.4 测试
+
+​		测试之前，记得重新启动消费者模块
+
+​		在浏览器中输入 http://localhost/consumer/payment/10，多次刷新查看端口号的变化，端口号已经变成随机出现的了。
+
