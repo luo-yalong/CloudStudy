@@ -1968,3 +1968,392 @@ public class OrderMain80 {
 
 ​		在浏览器中输入 http://localhost/consumer/payment/10，多次刷新查看端口号的变化，端口号已经变成随机出现的了。
 
+### 5.7 手写轮询算法
+
+#### 5.7.1 去除 `LoadBalance`
+
+​		修改 `cloud-consumer-order80` 接口的配置类中的 `@LoadBalanced` 注解，同时去掉启动类上面的 `@RibbonClient(name = "CLOUD-PAYMENT-SERVICE",configuration = MySelfRule.class)` 注解
+
+```java
+package com.lyl.springcloud.config;
+
+import org.springframework.cloud.client.loadbalancer.LoadBalanced;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.client.RestTemplate;
+
+/**
+ * @author 罗亚龙
+ * @date 2022/1/21 14:26
+ */
+@Configuration
+public class ApplicationContextConfig {
+
+    @Bean
+    //@LoadBalanced  
+    public RestTemplate restTemplate(){
+        return new RestTemplate();
+    }
+}
+```
+
+**启动类**
+
+```java
+package com.lyl.springcloud;
+
+import com.lyl.myrule.MySelfRule;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.cloud.netflix.eureka.EnableEurekaClient;
+import org.springframework.cloud.netflix.ribbon.RibbonClient;
+
+/**
+ * @author 罗亚龙
+ * @date 2022/1/21 14:04
+ */
+@SpringBootApplication
+@EnableEurekaClient
+//@RibbonClient(name = "CLOUD-PAYMENT-SERVICE",configuration = MySelfRule.class)
+public class OrderMain80 {
+
+    public static void main(String[] args) {
+        SpringApplication.run(OrderMain80.class,args);
+    }
+
+}
+```
+
+#### 5.7.2 定义接口及实现类
+
+1. 定义一个 `LoadBalance` 的接口
+
+   ```java
+   package com.lyl.springcloud.lb;
+   
+   import org.springframework.cloud.client.ServiceInstance;
+   
+   import java.util.List;
+   
+   public interface LoadBalance {
+       
+       ServiceInstance instances(List <ServiceInstance> serviceInstanceList);
+   }
+   ```
+
+2. 实现 `LoadBalance` 接口
+
+   ```java
+   package com.lyl.springcloud.lb;
+   
+   import org.springframework.cloud.client.ServiceInstance;
+   import org.springframework.stereotype.Component;
+   
+   import java.util.List;
+   import java.util.concurrent.atomic.AtomicInteger;
+   
+   @Component
+   public class MyLb implements LoadBalance {
+   
+       private AtomicInteger atomicInteger = new AtomicInteger(0);
+   
+       public final int getAndIncrement(){
+           int current;
+           int next;
+           do {
+               current = atomicInteger.get();
+               next = current >= Integer.MAX_VALUE ? 0 : current + 1;
+           }while (!atomicInteger.compareAndSet(current, next));
+           System.out.println("第几次访问，次数：" + next);
+           return next;
+       }
+   
+       @Override
+       public ServiceInstance instances(List<ServiceInstance> serviceInstanceList) {
+           int index = getAndIncrement() % serviceInstanceList.size();
+           return serviceInstanceList.get(index);
+       }
+   }
+   ```
+
+#### 5.7.3 改造控制器
+
+​		改造 提供者的两个模块的控制器，都添加上一个接口
+
+```java
+@GetMapping("/lb")
+public Result getServerPort(){
+    return Result.success(serverPort);
+}
+```
+
+​		改造 `cloud-consumer-order80` 模块的控制器
+
+```java
+@Resource
+private LoadBalance lb;
+@Resource
+private DiscoveryClient discoveryClient;
+
+@GetMapping("/payment/lb")
+public Result getServerPort(){
+    List<ServiceInstance> instanceList = discoveryClient.getInstances("CLOUD-PAYMENT-SERVICE");
+    ServiceInstance instance = lb.instances(instanceList);
+    URI uri = instance.getUri();
+    return restTemplate.getForObject(uri + "/payment/lb",Result.class);
+}
+```
+
+#### 5.7.4 测试
+
+​		使用 http://localhost/consumer/payment/lb 来测试，可以看到我们的负载均衡实现了。
+
+## 6. OpenFeign服务接口调用
+
+### 6.1 简述
+
+​		`Feign` 是一个声明式的 `Web` 服务客户端，让编写 `Web` 服务客户端变得非常容易，只需要创建一个接口并在接口上面添加注解即可。
+
+### 6.2 `Feign` 和 `OpenFeign` 区别
+
+![image-20220126211954438](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-26/ea5972b6158d201e2b755061eee79b6f.jpeg)
+
+### 6.3 使用步骤
+
+注解：`@FeignCLient`  
+
+`OpenFeign` 在消费端使用
+
+#### 6.3.1 创建新模块
+
+​		创建一个名为 `cloud-consumer-feign-order80` 的模块
+
+#### 6.3.2 改 `pom`
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <parent>
+        <artifactId>CloudStudy</artifactId>
+        <groupId>com.lyl</groupId>
+        <version>1.0-SNAPSHOT</version>
+    </parent>
+    <modelVersion>4.0.0</modelVersion>
+
+    <artifactId>cloud-consumer-feign-order80</artifactId>
+
+    <properties>
+        <maven.compiler.source>8</maven.compiler.source>
+        <maven.compiler.target>8</maven.compiler.target>
+    </properties>
+
+    <dependencies>
+
+        <!--解决 feign get请求被重置为post请求-->
+        <dependency>
+            <groupId>io.github.openfeign</groupId>
+            <artifactId>feign-httpclient</artifactId>
+        </dependency>
+
+        <!--openFeign-->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-openfeign</artifactId>
+        </dependency>
+
+        <!--eureka-client-->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-netflix-eureka-client</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.lyl</groupId>
+            <artifactId>cloud-api-common</artifactId>
+            <version>1.0-SNAPSHOT</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-devtools</artifactId>
+            <scope>runtime</scope>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+
+</project>
+```
+
+#### 6.3.3 改 `yml`
+
+```yml
+server:
+  port: 80
+
+eureka:
+  client:
+    #表示是否向eureka注册自己
+    register-with-eureka: false
+    service-url:
+      #注册中心地址
+      #      defaultZone: http://localhost:7001/eureka  #单机版
+      defaultZone: http://eureka7001.com:7001/eureka,http://eureka7002.com:7002/eureka
+
+feign:
+  httpclient:
+    enabled: true
+```
+
+#### 6.3.4 主启动
+
+​		主启动类上需要添加 `@EnableFeignClients` 注解
+
+```java
+package com.lyl.springcloud;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.cloud.openfeign.EnableFeignClients;
+
+@SpringBootApplication
+@EnableFeignClients
+public class OrderFeignMain80 {
+    public static void main(String[] args) {
+        SpringApplication.run(OrderFeignMain80.class,args);
+    }
+}
+```
+
+#### 6.3.5 业务类
+
+封装服务接口，使用注解 + 服务接口 来调用提供者提供的服务。
+
+```java
+package com.lyl.springcloud.service;
+
+import com.lyl.springcloud.entity.Result;
+import org.springframework.cloud.openfeign.FeignClient;
+import org.springframework.stereotype.Component;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestParam;
+
+/**
+ * 通过 注解 @FeignClient(服务名)
+ *      和 提供者的服务接口，可以直接调用提供者提供的服务。
+ */
+
+@Component
+@FeignClient(value = "CLOUD-PAYMENT-SERVICE")
+public interface ProviderFeignService {
+
+    /**
+     * 通过id查询支付数据
+     * @param id id
+     * @return 支付数据
+     */
+    @GetMapping("/payment/{id:\\d+}")
+    public Result getById(@PathVariable(value = "id")  Long id);
+
+    @GetMapping("/payment/lb")
+    public Result getServerPort();
+}
+```
+
+**控制器调用**
+
+```java
+package com.lyl.springcloud.controller;
+
+import cn.hutool.log.Log;
+import com.lyl.springcloud.entity.Result;
+import com.lyl.springcloud.service.ProviderFeignService;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import javax.annotation.Resource;
+
+@Slf4j
+@RestController
+@RequestMapping("/consumer")
+public class OrderController {
+
+    @Resource
+    private ProviderFeignService feignService;
+
+    /**
+     * 通过id查询支付数据
+     * @param id id
+     * @return 支付数据
+     */
+    @GetMapping("/payment/{id:\\d+}")
+    public Result getById(@PathVariable("id") Long id){
+        log.info("查询的id = " + id);
+        return feignService.getById(id);
+    }
+
+    @GetMapping("/payment/lb")
+    public Result getServerPort(){
+        return feignService.getServerPort();
+    }
+}
+```
+
+#### 6.3.6 测试
+
+​		使用 http://localhost/consumer/payment/10 来测试使用 `openfeign` 来调用服务。
+
+
+
+#### 6.3.7 报错处理
+
+​		消费者模块 使用 `open feign` 调用其他 提供者的服务的时候，使用 `get` 方法调动其他服务的 `get` 方法会报 `405 ` 错误。这是因为，feign底层使用的是`httpurlconnection`的工具，而进行传递body的时候，会调用`getOutputStrean`方法，里边会判断是否是get请求，如果是get请求，则`自动转为post`请求，而远方的服务只能够支持`get`请求，因此会报错。
+
+>  解决方案，使用 `feign-httpclient` 替换掉 `feign` 默认的 `httpurlconnection` 
+
+在 `pom` 文件中添加依赖
+
+```xml
+<!--解决 feign get请求被重置为post请求-->
+<dependency>
+    <groupId>io.github.openfeign</groupId>
+    <artifactId>feign-httpclient</artifactId>
+</dependency>
+```
+
+修改 `yml` 文件
+
+```yml
+feign:
+  httpclient:
+    enabled: true  #默认为true,可以不用处理
+```
+
+此时，客户端就可以调用服务端的 `get` 方法了。且客户端和服务端的代码可以保持高度一致。
+
+
+

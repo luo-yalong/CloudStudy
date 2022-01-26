@@ -66,4 +66,9 @@ public class PaymentController {
         Payment payment = paymentService.getById(id);
         return Result.success("查询成功,serverPort: " + serverPort,payment);
     }
+
+    @GetMapping("/lb")
+    public Result getServerPort(){
+        return Result.success(serverPort);
+    }
 }

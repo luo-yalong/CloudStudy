@@ -2,11 +2,16 @@ package com.lyl.springcloud.controller;
 
 import com.lyl.springcloud.entity.vo.PaymentVo;
 import com.lyl.springcloud.entity.Result;
+import com.lyl.springcloud.lb.LoadBalance;
+import org.springframework.cloud.client.ServiceInstance;
+import org.springframework.cloud.client.discovery.DiscoveryClient;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestTemplate;
 
 import javax.annotation.Resource;
+import java.net.URI;
+import java.util.List;
 
 /**
  * @author 罗亚龙
@@ -18,6 +23,10 @@ public class OrderController {
 
     //public static final String PAYMENT_URL = "http://localhost:8001";
     public static final String PAYMENT_URL = "http://CLOUD-PAYMENT-SERVICE";
+    @Resource
+    private LoadBalance lb;
+    @Resource
+    private DiscoveryClient discoveryClient;
 
     @Resource
     private RestTemplate restTemplate;
@@ -57,5 +66,12 @@ public class OrderController {
         }
     }
 
+    @GetMapping("/payment/lb")
+    public Result getServerPort(){
+        List<ServiceInstance> instanceList = discoveryClient.getInstances("CLOUD-PAYMENT-SERVICE");
+        ServiceInstance instance = lb.instances(instanceList);
+        URI uri = instance.getUri();
+        return restTemplate.getForObject(uri + "/payment/lb",Result.class);
+    }
 
 }
