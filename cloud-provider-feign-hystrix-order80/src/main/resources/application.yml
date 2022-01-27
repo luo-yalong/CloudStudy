@@ -1,9 +1,9 @@
 server:
-  port: 8001
+  port: 80
 
 spring:
   application:
-    name: cloud-payment-hystrix-service
+    name: cloud-provider-feign-hystrix-service
 
 eureka:
   client:
@@ -17,7 +17,16 @@ eureka:
       defaultZone: http://eureka7001.com:7001/eureka,http://eureka7002.com:7002/eureka  #集群版
   instance:
     #实例id,显示在Eureka注册中心的名字，默认是ip地址+端口号
-    instance-id: PaymentHystrix8001
+    instance-id: OrderFeignHystrix80
     #访问路径是否显示ip地址
     prefer-ip-address: true
 
+# 为了解决调用正常长耗时接口超时
+feign:
+  client:
+    config:
+      default:
+        # 连接时长 2秒
+        connectTimeout: 2000
+        # 读取时长 5秒
+        readTimeout: 5000
