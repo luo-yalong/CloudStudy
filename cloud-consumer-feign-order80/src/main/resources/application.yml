@@ -13,3 +13,17 @@ eureka:
 feign:
   httpclient:
     enabled: true
+  client:
+    config:
+      default:
+        #连接超时
+        connectTimeout: 5000
+        #读取超时
+        readTimeout: 5000
+
+
+logging:
+  level:
+    # feign 日志以什么级别监控那个接口
+    com.lyl.springcloud.service.ProviderFeignService: debug
+

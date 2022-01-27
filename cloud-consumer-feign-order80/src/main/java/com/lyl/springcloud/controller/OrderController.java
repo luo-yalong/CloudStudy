@@ -1,6 +1,5 @@
 package com.lyl.springcloud.controller;
 
-import cn.hutool.log.Log;
 import com.lyl.springcloud.entity.Result;
 import com.lyl.springcloud.service.ProviderFeignService;
 import lombok.extern.slf4j.Slf4j;
@@ -11,6 +10,9 @@ import org.springframework.web.bind.annotation.RestController;
 
 import javax.annotation.Resource;
 
+/**
+ * @author luoyalong
+ */
 @Slf4j
 @RestController
 @RequestMapping("/consumer")
@@ -33,5 +35,10 @@ public class OrderController {
     @GetMapping("/payment/lb")
     public Result getServerPort(){
         return feignService.getServerPort();
+    }
+
+    @GetMapping("/payment/timeout")
+    public Result timeout(){
+        return feignService.timeOut();
     }
 }

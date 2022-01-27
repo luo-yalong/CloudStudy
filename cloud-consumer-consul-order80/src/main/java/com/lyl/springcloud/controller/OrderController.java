@@ -7,6 +7,9 @@ import org.springframework.web.client.RestTemplate;
 
 import javax.annotation.Resource;
 
+/**
+ * @author luoyalong
+ */
 @RestController
 @RequestMapping("/consumer")
 public class OrderController {

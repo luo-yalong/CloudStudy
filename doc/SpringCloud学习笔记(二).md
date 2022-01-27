@@ -2355,5 +2355,501 @@ feign:
 
 此时，客户端就可以调用服务端的 `get` 方法了。且客户端和服务端的代码可以保持高度一致。
 
+### 6.4 `OpenFeign` 超时控制
+
+​		业务场景：服务提供方提供的接口，需要三秒钟才可以调用完成，属于正常的耗时方法。但是对于消费者来说，可能就会出现超时报错的情况。
+
+#### 6.4.1 搭建测试环境
+
+1. 在 `cloud-provider-payment` 模块中添加 耗时三秒的接口
+
+   ```java
+   /**
+    * 测试feign的超时
+    * @return 端口号
+    */
+   @GetMapping("/timeout")
+   public Result timeOut(){
+       try {
+           TimeUnit.SECONDS.sleep(3);
+       } catch (InterruptedException e) {
+           e.printStackTrace();
+       }
+       return Result.success(serverPort);
+   }
+   ```
+
+2. 在 `cloud-consumer-feign-order80` 模块中调用 服务端提供的 长耗时接口
+
+   ​		**接口**：
+
+   ```java
+   /**
+    * 服务端提供的超时接口
+    * @return 端口号
+    */
+   @GetMapping("/timeout")
+   public Result timeOut();
+   ```
+
+   ​		**控制器**
+
+   ```java
+   @GetMapping("/timeout")
+   public Result timeout(){
+       return feignService.timeOut();
+   }
+   ```
+
+3. 调用服务端提供的接口
+
+   ​		调用接口 ： http://localhost:8001/payment/timeout  ，大概三秒钟才可以显示出结果
+
+   ![image-20220127133228789](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-27/031fd0e2e65b1360b9f8bd87a2b9c9a6.jpeg)
+
+4. 客户端调用服务端提供的接口
+
+   ​		调用客户端接口： http://localhost/consumer/payment/timeout ， 会直接报错。
+
+   ![image-20220127133552756](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-27/ac2144ca770e12ea74da660553bce698.jpeg)
+
+#### 6.4.2 超时配置
+
+​		默认 `Feign` 客户端只会等待一秒钟，但是服务端处理需要超过一秒钟，导致 `feign` 客户端不想等待了，直接返回报错。为了避免这种情况，有时候我们还需要设置 `feign` 的超时控制。
 
 
+
+==以下配置不可用==
+
+---
+
+​		~~在 `yml` 中开启配置~~
+
+> ~~因为 `feign` 中集成了 `ribbon` , 所以 `feign` 的超时控制由 `ribbon` 来完成。~~
+
+**过时配置：不可用**
+
+```yml
+# 设置 feign客户端的超时时间
+ribbon:
+  # 指的是链接建立的所用的时间，适用于网络情况正常的情况下，两端连接所用的时间
+  ReadTimeOut: 5000
+  # 指的是建立连接后从服务器读取到可用资源所用的时间
+  ConnectTimeOut: 5000
+```
+
+---
+
+
+
+
+
+==**新配置**== ： 使用 `feign` 自己的配置  
+
+🎄参考链接： [Spring Cloud OpenFeign 超时与重试 - SegmentFault 思否](https://segmentfault.com/a/1190000041262968)
+
+```yml
+feign:
+  client:
+    config:
+      default:
+        #连接超时
+        connectTimeout: 5000
+        #读取超时
+        readTimeout: 5000
+```
+
+ 需要注意以下几点：
+
+- 连接超时 (`connectTimeout`) 和 读取超时 (readTimeout) 同时配置时，才会生效。
+- 超时单位为毫秒。
+- 可根据服务名称单独定义超时。
+
+比如， `provider-get` 服务提供的是查询接口，超时时间可以设置短一些：
+
+```yaml
+feign:
+  client:
+    config:
+      provider-get:
+        connectTimeout: 1000
+        readTimeout: 6000
+```
+
+
+
+---
+
+
+
+修改完成之后，重新调用 http://localhost/consumer/payment/timeout ，可以看到已经可以拿到结果了。
+
+![image-20220127140117098](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-27/db8fe7cb9ae5781ac186b0f88861ecee.jpeg)
+
+### 6.5 日志打印
+
+​		`feign` 提供了日志打印功能，我们可以通过配置来调整日志打印级别，从而了解 `feign` 中的 `http` 请求的细节。说白了，就是 对 `feign` 接口的调用情况进行监控和输出。
+
+#### 6.5.1 日志级别
+
+<img src="https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-27/6918fb3dafd4f756c083c9df79b79ed3.jpeg" alt="image-20220127140418677" style="zoom:80%;" />
+
+#### 6.5.2 配置Bean
+
+​		在 `cloud-consumer-feign-order80` 中新建一个 `feign` 日志 `bean`
+
+```java
+package com.lyl.springcloud.config;
+
+import feign.Logger;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+/**
+ * @author 罗亚龙
+ * @date 2022/1/27 14:08
+ */
+@Configuration
+public class FeignConfig {
+
+    @Bean
+    public Logger.Level feignLoggerLevel(){
+        //配置feign的日志级别
+        return Logger.Level.FULL;
+    }
+}
+```
+
+​		修改 `yml`
+
+```yml
+logging:
+  level:
+    # feign 日志以什么级别监控那个接口
+    com.lyl.springcloud.service.ProviderFeignService: debug
+```
+
+#### 6.5.3 测试
+
+​		调用 接口： http://localhost/consumer/payment/10
+
+**后台日志**
+
+![image-20220127141432223](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-27/e2f90829d6005d91a997ec93ca32a280.jpeg)
+
+## 7. Hystrix 服务降级 ❌
+
+### 7.1 简述
+
+​		`Hystrix`是一个用于处理分布式系统的延迟和容错的开源库， 在分布式系统里,许多依赖不可避免的会调用失败,比如超时、异常等，`Hystrix`能够保证在一个依赖出问题的情况下， 不会导致整体服务失败，避免级联故障，以提高分布式系统的弹性。
+
+​		**断路器** 本身是一种开关装置, 当某个服务单元发生故障之后，通过断路器的故障监控(类似熔断保险丝)，向调用方返回-个符合
+预期的、可处理的备选响应(FallBack) ，而不是长时间的等待或者抛出调用方无法处理的异常，这样就保证了服务调用方的线程不会
+被长时间、不必要地占用，从而避免了故障在分布式系统中的蔓延，乃至雪崩。
+
+**能干吗**
+
+- 服务降级
+- 服务熔断
+- 接近实时的监控
+- ……
+- 
+
+简介：[Hystrix介绍 - 废物大师兄 - 博客园 (cnblogs.com)](https://www.cnblogs.com/cjsblog/p/9391819.html)
+
+**官网**：[Netflix/Hystrix](https://github.com/Netflix/Hystrix)
+
+> **Hystrix** 官宣：==停更维护==
+
+### 7.2 三个重要的概念
+
+#### 7.2.1 服务降级
+
+​		当调用服务的时候，由于种种原因不能提供服务，返回一个可处理的备选响应。类似：服务器忙，请稍后再试，并让客户端返回一个友好的提示
+
+**那些情况会触发降级：**
+
+- 程序运行异常
+- 超时
+- 服务熔断触发服务降级
+- 线程池、信号量打满也会导致服务降级
+
+#### 7.2.2 服务熔断
+
+​		类比于保险丝达到最大服务访问后，直接拒绝访问，拉闸限电，然后调用服务降级的方法并返回友好提示。
+
+​		可以说就是 **保险丝**  ： **服务降级  ->   服务熔断   ->  恢复链路调用**
+
+#### 7.2.3 服务限流
+
+​		秒杀高并发等操作，严禁一窝蜂的过来拥挤，排队请求，一秒 N 个，有序进行
+
+### 7.3 Hystrix支付微服务构建
+
+#### 7.3.1 新建项目
+
+​		新创建一个名为 `cloud-provider-hystrix-payment8001` 模块
+
+#### 7.3.2 改 `pom`
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <parent>
+        <artifactId>CloudStudy</artifactId>
+        <groupId>com.lyl</groupId>
+        <version>1.0-SNAPSHOT</version>
+    </parent>
+    <modelVersion>4.0.0</modelVersion>
+
+    <artifactId>cloud-provider-hystrix-payment8001</artifactId>
+
+    <properties>
+        <maven.compiler.source>8</maven.compiler.source>
+        <maven.compiler.target>8</maven.compiler.target>
+    </properties>
+
+    <dependencies>
+
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-netflix-hystrix</artifactId>
+        </dependency>
+
+        <!--eureka-client-->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-netflix-eureka-client</artifactId>
+        </dependency>
+
+        <!--公共模块-->
+        <dependency>
+            <groupId>com.lyl</groupId>
+            <artifactId>cloud-api-common</artifactId>
+            <version>1.0-SNAPSHOT</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-devtools</artifactId>
+            <scope>runtime</scope>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+</project>
+```
+
+#### 7.3.3 改 `yml`
+
+```yml
+server:
+  port: 8001
+
+spring:
+  application:
+    name: cloud-payment-hystrix-service
+
+eureka:
+  client:
+    #表示是否向eureka注册自己
+    register-with-eureka: true
+    #表示是否需要从 eureka-server 抓取已有的注册信息，单节点无所谓，集群必须为true
+    fetch-registry: true
+    service-url:
+      #注册中心地址
+      #      defaultZone: http://localhost:7001/eureka  #单机版
+      defaultZone: http://eureka7001.com:7001/eureka,http://eureka7002.com:7002/eureka  #集群版
+  instance:
+    #实例id,显示在Eureka注册中心的名字，默认是ip地址+端口号
+    instance-id: PaymentHystrix8001
+    #访问路径是否显示ip地址
+    prefer-ip-address: true
+```
+
+#### 7.3.4 主启动
+
+```java
+package com.lyl.springcloud;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.cloud.netflix.eureka.EnableEurekaClient;
+
+/**
+ * @author 罗亚龙
+ * @date 2022/1/27 15:02
+ */
+@SpringBootApplication
+@EnableEurekaClient
+public class PaymentHystrixMain8001 {
+    public static void main(String[] args) {
+        SpringApplication.run(PaymentHystrixMain8001.class,args);
+    }
+}
+```
+
+#### 7.3.5 业务类
+
+**接口**
+
+```java
+package com.lyl.springcloud.service;
+
+import com.lyl.springcloud.entity.Result;
+
+/**
+ * @author 罗亚龙
+ * @date 2022/1/27 15:03
+ */
+public interface HystrixService {
+
+    /**
+     * 正常的方法
+     * @param id id
+     * @return Result
+     */
+    Result hystrix_OK(Integer id);
+
+    /**
+     * 超时的方法
+     * @param id id
+     * @return Result
+     */
+    Result hystrix_Timeout(Integer id);
+}
+```
+
+**实现类**
+
+```java
+package com.lyl.springcloud.service;
+
+import com.lyl.springcloud.entity.Result;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+
+import java.util.concurrent.TimeUnit;
+
+/**
+ * @author 罗亚龙
+ * @date 2022/1/27 15:03
+ */
+@Slf4j
+@Service
+public class HystrixServiceImpl implements HystrixService {
+    @Override
+    public Result hystrix_OK(Integer id) {
+        String str = "hystrix_OK  [" + Thread.currentThread().getName() + "]      参数：" + id;
+        log.info(str);
+        return Result.success("查询成功",str);
+    }
+
+    @Override
+    public Result hystrix_Timeout(Integer id) {
+        try {
+            TimeUnit.SECONDS.sleep(3);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        String str = "hystrix_OK  [" + Thread.currentThread().getName() + "]      参数：" + id;
+        log.info(str);
+        return Result.success("查询成功",str);
+    }
+}
+```
+
+**控制器**
+
+```java
+package com.lyl.springcloud.controller;
+
+import com.lyl.springcloud.entity.Result;
+import com.lyl.springcloud.service.HystrixService;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RestController;
+
+import javax.annotation.Resource;
+
+/**
+ * @author 罗亚龙
+ * @date 2022/1/27 15:03
+ */
+@RestController
+public class PaymentController {
+
+    @Resource
+    private HystrixService hystrixService;
+
+    /**
+     * 正常的方法
+     * @param id id
+     * @return Result
+     */
+    @GetMapping("/payment/hystrix/ok/{id}")
+    public Result hystrix_OK(@PathVariable("id") Integer id){
+        return hystrixService.hystrix_OK(id);
+    }
+
+    /**
+     * 超时的方法
+     * @param id id
+     * @return Result
+     */
+    @GetMapping("/payment/hystrix/timeout/{id}")
+    public Result hystrix_Timeout(@PathVariable("id") Integer id){
+        return hystrixService.hystrix_Timeout(id);
+    }
+
+}
+```
+
+#### 7.3.6 测试
+
+**启动项目**
+
+- 启动 `cloud-eureka-server7001` 和 `cloud-eureka-server7002` 注册中心
+- 启动 `cloud-provider-hystrix-payment8001` 支付微服务
+
+查看 `Eureka` ，支付微服务已经注册进 `Eureka`
+
+<img src="https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-27/7cc7d6fea89c8d772258602641c632ff.jpeg" alt="image-20220127153650196" style="zoom: 67%;" />
+
+
+
+**测试**
+
+- 调用正常服务： http://localhost:8001/payment/hystrix/ok/10
+
+  ![image-20220127153846088](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-27/78337aebc831c19a846ad9c0f279b7a8.jpeg)
+
+  
+
+- 调用超时服务：http://localhost:8001/payment/hystrix/timeout/10
+
+  ![image-20220127153830435](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-27/8f256b8457117e7b00f5538c1c2d4b0f.jpeg)
+
+  ​	可以看到两个接口都可以正常返回数据
+
+  

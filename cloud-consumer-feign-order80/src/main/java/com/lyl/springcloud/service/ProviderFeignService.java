@@ -23,6 +23,17 @@ public interface ProviderFeignService {
     @GetMapping("/payment/{id:\\d+}")
     public Result getById(@PathVariable(value = "id")  Long id);
 
+    /**
+     * 测试服务端的负载均衡
+     * @return 端口号
+     */
     @GetMapping("/payment/lb")
     public Result getServerPort();
+
+    /**
+     * 服务端提供的超时接口
+     * @return 端口号
+     */
+    @GetMapping("/payment/timeout")
+    public Result timeOut();
 }
