@@ -3183,3 +3183,305 @@ public class OrderHystrixController {
 3. 测试，超时会返回友好的提示，同时对于接口异常（程序异常）也会返回 `fallback` 方法
 
    ![image-20220127223820625](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-27/475f5455931d6b375b66c2b85f0c4efc.jpeg)
+
+#### 7.5.2 消费侧服务降级
+
+​		消费侧也可以使用 `hystrix` 进行服务降级。
+
+**修改 `cloud-consumer-feign-hystrix-order80` 模块**
+
+1. 改 `pom`
+
+   ​		查看 `pom` 文件，确保 `pom` 文件中有以下依赖
+
+   ```xml
+   <dependency>
+       <groupId>org.springframework.cloud</groupId>
+       <artifactId>spring-cloud-starter-netflix-hystrix</artifactId>
+   </dependency>
+   ```
+
+2. 改 `yml`
+
+   ```yml
+   feign:
+     #开启断路器
+     hystrix:
+       enabled: true
+   ```
+
+3. 主启动
+
+   ​		启动类上面添加  `@EnableHystrix` 注解
+
+   ```java
+   package com.lyl.springcloud;
+   
+   import org.springframework.boot.SpringApplication;
+   import org.springframework.boot.autoconfigure.SpringBootApplication;
+   import org.springframework.cloud.netflix.eureka.EnableEurekaClient;
+   import org.springframework.cloud.netflix.hystrix.EnableHystrix;
+   import org.springframework.cloud.openfeign.EnableFeignClients;
+   
+   /**
+    * @author luoyalong
+    */
+   @SpringBootApplication
+   @EnableFeignClients
+   @EnableEurekaClient
+   //开启Hystrix
+   @EnableHystrix
+   public class OrderFeignHystrixMain80 {
+   
+       public static void main(String[] args) {
+           SpringApplication.run(OrderFeignHystrixMain80.class,args);
+       }
+   }
+   ```
+
+4. 业务类
+
+   ​		业务类上面添加 `fallback` 方法
+
+   ```java
+   /**
+    * 超时的方法
+    * @param id id
+    * @return Result
+    */
+   @GetMapping("/consumer/payment/hystrix/timeout/{id}")
+   @HystrixCommand(fallbackMethod = "hystrix_TimeoutHandler", commandProperties = {
+           @HystrixProperty(name = "execution.isolation.thread.timeoutInMilliseconds",value = "1500")
+   })
+   public Result hystrix_Timeout(@PathVariable("id") Integer id){
+       return paymentHystrixService.hystrix_Timeout(id);
+   }
+   
+   /**
+    * 服务降级（兜底的方法）
+    * @param id
+    * @return
+    */
+   public Result hystrix_TimeoutHandler(Integer id){
+       String str = "客户端: hystrix_Timeout  [" + Thread.currentThread().getName() + "]  参数：" + id + "  80 服务器繁忙或者接口异常 ";
+       log.info(str);
+       return Result.success("客户端 80 服务器繁忙或者接口异常", str);
+   }
+   ```
+
+#### 7.5.3 存在的问题
+
+		1. 虽然目前完成了服务的降级，但是每一个需要降级的接口都需要一个 兜底的方法，造成了代码的大量冗余。同时，如果100 个接口需要服务降级，就需要写 100 个兜底的方法。（可以使用默认 fallback方法）
+  		2. 接口和兜底的方法拥挤在一起，没有分开。
+
+#### 7.5.4 全局 `fallback` 方法
+
+1. 编写一个全局 `fallback` 方法
+
+   ```java
+   /**
+    * 全局超时方法
+    * @return
+    */
+   public Result global_TimeOut(){
+       String str = "global fallback方法 80 服务器繁忙或者接口异常 ";
+       log.info(str);
+       return Result.fail(str);
+   }
+   ```
+
+2. 控制器类上面添加注解：`@DefaultProperties(defaultFallback = "global_TimeOut")`
+
+3. 业务类上面添加 `@HystrixCommand` 注解
+
+   ```java
+   /**
+    * 超时的方法
+    * @param id id
+    * @return Result
+    */
+   @GetMapping("/consumer/payment/hystrix/timeout/{id}")
+   /*    @HystrixCommand(fallbackMethod = "hystrix_TimeoutHandler", commandProperties = {
+           @HystrixProperty(name = "execution.isolation.thread.timeoutInMilliseconds",value = "1500")
+   })*/
+   @HystrixCommand
+   public Result hystrix_Timeout(@PathVariable("id") Integer id){
+       return paymentHystrixService.hystrix_Timeout(id);
+   }
+   ```
+
+   **注意** 以下代码可以自定义 `fallback` 方法
+
+   ```java
+   @HystrixCommand(fallbackMethod = "hystrix_TimeoutHandler", commandProperties = {
+               @HystrixProperty(name = "execution.isolation.thread.timeoutInMilliseconds",value = "1500")
+       })
+   ```
+
+   
+
+**完成代码**
+
+```java
+package com.lyl.springcloud.controller;
+
+import com.lyl.springcloud.entity.Result;
+import com.lyl.springcloud.service.PaymentHystrixService;
+import com.netflix.hystrix.contrib.javanica.annotation.DefaultProperties;
+import com.netflix.hystrix.contrib.javanica.annotation.HystrixCommand;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RestController;
+
+import javax.annotation.Resource;
+
+/**
+ * @author luoyalong
+ */
+@Slf4j
+@RestController
+@DefaultProperties(defaultFallback = "global_TimeOut")
+public class OrderHystrixController {
+
+    @Resource
+    private PaymentHystrixService paymentHystrixService;
+
+    /**
+     * 正常的方法
+     * @param id id
+     * @return Result
+     */
+    @GetMapping("/consumer/payment/hystrix/ok/{id}")
+    public Result hystrix_OK(@PathVariable("id") Integer id){
+        return paymentHystrixService.hystrix_OK(id);
+    }
+
+    /**
+     * 超时的方法
+     * @param id id
+     * @return Result
+     */
+    @GetMapping("/consumer/payment/hystrix/timeout/{id}")
+/*    @HystrixCommand(fallbackMethod = "hystrix_TimeoutHandler", commandProperties = {
+            @HystrixProperty(name = "execution.isolation.thread.timeoutInMilliseconds",value = "1500")
+    })*/
+    @HystrixCommand
+    public Result hystrix_Timeout(@PathVariable("id") Integer id){
+        return paymentHystrixService.hystrix_Timeout(id);
+    }
+
+    /**
+     * 服务降级（兜底的方法）
+     * @param id
+     * @return
+     */
+    public Result hystrix_TimeoutHandler(Integer id){
+        String str = "客户端: hystrix_Timeout  [" + Thread.currentThread().getName() + "]  参数：" + id + "  80 服务器繁忙或者接口异常 ";
+        log.info(str);
+        return Result.fail(str);
+    }
+
+    /**
+     * 全局超时方法
+     * @return
+     */
+    public Result global_TimeOut(){
+        String str = "global fallback方法 80 服务器繁忙或者接口异常 ";
+        log.info(str);
+        return Result.fail(str);
+    }
+}
+```
+
+#### 7.5.5 统配服务降级 `feign fallback`
+
+​		服务降级，客户端去调用服务端，碰上服务端宕机或关闭。
+
+​		本次处理实在 客户端80 实现完成的，与服务端8001 没有关系，只需要为 `feign` 客户端定义的接口添加一个服务降级的实现类即可实现解耦。
+
+​		未来我们要面临的异常：运行时异常，超时异常，宕机
+
+​		实现 `feign` 客户端 `PaymentHystrixService` ，添加实现类 `PaymentHystrixServiceImpl` 即可为每个方法提供异常处理
+
+**新建实现类**
+
+```java
+package com.lyl.springcloud.service;
+
+import com.lyl.springcloud.entity.Result;
+import org.springframework.stereotype.Component;
+
+/**
+ * @author 罗亚龙
+ * @date 2022/1/28 16:22
+ */
+@Component
+public class PaymentHystrixServiceImpl implements PaymentHystrixService {
+    @Override
+    public Result hystrix_OK(Integer id) {
+        return Result.fail("-------------fallback  : hystrix_OK ");
+    }
+
+    @Override
+    public Result hystrix_Timeout(Integer id) {
+        return Result.fail("-------------fallback : hystrix_Timeout");
+    }
+}
+```
+
+同时，在 `feign` 客户端的接口上需要指定 出现异常的时候 `fallback`  可以处理的类。
+
+```
+@FeignClient(value = "CLOUD-PAYMENT-HYSTRIX-SERVICE", fallback = PaymentHystrixServiceImpl.class)
+```
+
+**完整代码**
+
+```java
+package com.lyl.springcloud.service;
+
+import com.lyl.springcloud.entity.Result;
+import org.springframework.cloud.openfeign.FeignClient;
+import org.springframework.stereotype.Service;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+
+/**
+ * @author luoyalong
+ */
+@Service
+@FeignClient(value = "CLOUD-PAYMENT-HYSTRIX-SERVICE", fallback = PaymentHystrixServiceImpl.class)
+public interface PaymentHystrixService {
+
+    /**
+     * 正常的方法
+     * @param id id
+     * @return Result
+     */
+    @GetMapping("/payment/hystrix/ok/{id}")
+    public Result hystrix_OK(@PathVariable("id") Integer id);
+
+    /**
+     * 超时的方法
+     * @param id id
+     * @return Result
+     */
+    @GetMapping("/payment/hystrix/timeout/{id}")
+    public Result hystrix_Timeout(@PathVariable("id") Integer id);
+
+}
+```
+
+
+
+**测试**
+
+​		当我们调用 `hystrix_OK` 的方法的时候，正常调用。
+
+![image-20220128163426812](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-28/c83a65b06c1f02cd61d84de2d23fa420.jpeg)
+
+**手动关闭 8001 服务端**
+
+![image-20220128163504214](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-28/89d9f9fbee121933049fd799ffc9839b.jpeg)
+

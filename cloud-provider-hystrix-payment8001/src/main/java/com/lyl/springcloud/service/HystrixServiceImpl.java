@@ -25,7 +25,7 @@ public class HystrixServiceImpl implements HystrixService {
 
     @Override
     @HystrixCommand(fallbackMethod = "hystrix_TimeoutHandler", commandProperties = {
-            @HystrixProperty(name = "execution.isolation.thread.timeoutInMilliseconds",value = "2000")
+            @HystrixProperty(name = "execution.isolation.thread.timeoutInMilliseconds",value = "5000")
     })
     public Result hystrix_Timeout(Integer id) {
         int timeoutTime = 3;

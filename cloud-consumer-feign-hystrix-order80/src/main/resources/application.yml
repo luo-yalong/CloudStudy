@@ -3,7 +3,7 @@ server:
 
 spring:
   application:
-    name: cloud-provider-feign-hystrix-service
+    name: cloud-consumer-feign-hystrix-service
 
 eureka:
   client:
@@ -30,3 +30,7 @@ feign:
         connectTimeout: 2000
         # 读取时长 5秒
         readTimeout: 5000
+
+  #开启断路器
+  hystrix:
+    enabled: true

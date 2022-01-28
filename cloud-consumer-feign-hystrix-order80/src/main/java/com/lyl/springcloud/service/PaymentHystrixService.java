@@ -6,8 +6,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 
+/**
+ * @author luoyalong
+ */
 @Service
-@FeignClient("CLOUD-PAYMENT-HYSTRIX-SERVICE")
+@FeignClient(value = "CLOUD-PAYMENT-HYSTRIX-SERVICE", fallback = PaymentHystrixServiceImpl.class)
 public interface PaymentHystrixService {
 
     /**
