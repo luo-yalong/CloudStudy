@@ -1,5 +1,6 @@
 package com.lyl.springcloud.service;
 
+import cn.hutool.core.util.IdUtil;
 import com.lyl.springcloud.entity.Result;
 import com.netflix.hystrix.contrib.javanica.annotation.HystrixCommand;
 import com.netflix.hystrix.contrib.javanica.annotation.HystrixProperty;
@@ -48,6 +49,28 @@ public class HystrixServiceImpl implements HystrixService {
         String str = "hystrix_Timeout  [" + Thread.currentThread().getName() + "]  参数：" + id + "  8001 服务器繁忙或者接口异常 ";
         log.info(str);
         return Result.success("8001 服务器繁忙或者接口异常", str);
+    }
+
+    @Override
+    @HystrixCommand(fallbackMethod = "paymentCircuitBreakerHandler",commandProperties = {
+            @HystrixProperty(name = "circuitBreaker.enabled", value = "true"),  //是否开启断路器
+            @HystrixProperty(name = "circuitBreaker.requestVolumeThreshold",value = "10"),  //请求次数
+            @HystrixProperty(name = "circuitBreaker.sleepWindowInMilliseconds",value = "10000"),  //时间窗口期
+            @HystrixProperty(name = "circuitBreaker.errorThresholdPercentage",value = "60")  // 失败率达到多少的时候跳闸
+    })
+    public Result paymentCircuitBreaker(Integer id) {
+        if (id < 0){
+            throw  new RuntimeException("*****id不能为负数");
+        }
+        String uuid = IdUtil.simpleUUID();
+
+        String str = "调用成功：" + Thread.currentThread().getName() + "\t\t流水号：" + uuid;
+
+        return Result.success(str);
+    }
+
+    private Result paymentCircuitBreakerHandler(Integer id){
+        return Result.fail("id不能为负数，请稍后再试");
     }
 
 

@@ -10,6 +10,7 @@
     <modules>
         <module>cloud-provider-payment8001</module>
         <module>cloud-consumer-order80</module>
+        <module>cloud-consumer-hystrix-dashboard9001</module>
         <module>cloud-api-common</module>
         <module>cloud-eureka-server7001</module>
         <module>cloud-eureka-server7002</module>
@@ -22,6 +23,7 @@
         <module>cloud-provider-hystrix-payment8001</module>
         <module>cloud-consumer-feign-hystrix-order80</module>
         <module>cloud-gateway-service9527</module>
+        <module>cloud-config-server3344</module>
     </modules>
     <!--一定要改成pom-->
     <packaging>pom</packaging>

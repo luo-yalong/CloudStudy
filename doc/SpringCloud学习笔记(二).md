@@ -3485,6 +3485,222 @@ public interface PaymentHystrixService {
 
 ![image-20220128163504214](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-28/89d9f9fbee121933049fd799ffc9839b.jpeg)
 
+### 7.6 服务熔断
+
+#### 7.6.1 熔断机制概述
+
+​		熔断机制是应对雪崩效应的一种微服务链路裱糊机制。当扇出链路的某个微服务出错不可用或者响应时间太长时，会进行服务的降级，进而熔断该节点微服务的调用，快速返回错误的响应信息。**当检测到该节点微服务调用响应正常后，恢复正常链路**
+
+​		在SpringCloud框架中，熔断机制通过 `Hystrix` 实现。`Hystrix` 会监控微服务间调用的状况，当失败的调用到一定阈值，缺省是5秒内20次调用失败，就会启动熔断机制。熔断机制的注解是 `@HystrixCommand`
+
+#### 7.6.2 修改 `cloud-provider-hystrix-payment8001` 模块
+
+​		修改 `cloud-provider-hystrix-payment8001` 模块，编写一个新接口，测试断路器方法。
+
+1. 添加一个 `service`接口
+
+   ```java
+   /**
+    * 测试短路的方法
+    * @param id id
+    * @return
+    */
+   Result paymentCircuitBreaker(Integer id);
+   ```
+
+2. 实现 `service` 接口
+
+   ```java
+   @Override
+   @HystrixCommand(fallbackMethod = "paymentCircuitBreakerHandler",commandProperties = {
+           @HystrixProperty(name = "circuitBreaker.enabled", value = "true"),  //是否开启断路器
+           @HystrixProperty(name = "circuitBreaker.requestVolumeThreshold",value = "10"),  //请求次数
+           @HystrixProperty(name = "circuitBreaker.sleepWindowInMilliseconds",value = "10000"),  //时间窗口期
+           @HystrixProperty(name = "circuitBreaker.errorThresholdPercentage",value = "60")  // 失败率达到多少的时候跳闸
+   })
+   public Result paymentCircuitBreaker(Integer id) {
+       if (id < 0){
+           throw  new RuntimeException("*****id不能为负数");
+       }
+       String uuid = IdUtil.simpleUUID();
+   
+       String str = "调用成功：" + Thread.currentThread().getName() + "\t\t流水号：" + uuid;
+   
+       return Result.success(str);
+   }
+   
+   private Result paymentCircuitBreakerHandler(Integer id){
+       return Result.fail("id不能为负数，请稍后再试");
+   }
+   ```
+
+3. 在控制器内调用 新建的接口
+
+   ```java
+   /**
+    * 服务熔断方法
+    * @param id
+    * @return
+    */
+   @GetMapping("/payment/circuit/{id}")
+   public Result paymentCircuitBreaker(@PathVariable("id") Integer id){
+       return hystrixService.paymentCircuitBreaker(id);
+   }
+   ```
+
+4. 测试
+
+   1. 调用正确接口：http://localhost:8001/payment/circuit/10
+
+   2. 调用触发 `fallback` 接口：http://localhost:8001/payment/circuit/-10
+
+   3. 多次调用错误的接口，之后再次调用正确的接口，正确的接口刚开始可能并不会返回正确的结果，需要等一会才会返回正确的结果。
+
+   4. 具体的原因是：上述接口做了服务熔断。在10秒内10次调用中出现了百分之六十的错误率，则会触发熔断。之后偶尔调用正确的结果会返回熔断的方法是因为，断路器此时应该处于 半开的状态。
+
+   5. 断路器什么时候起作用
+
+      ![image-20220130191757347](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-30/a4b02caa3d1a604120442e0e3bb49902.jpeg)
+
+   6. 断路器开启或者关闭的条件
+
+      ![image-20220130192113717](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-30/237624f7a116ed07f094c6be3dd2a23e.jpeg)
+
+### 7.7 `Hystrix` 图形监控
+
+#### 7.7.1 简介
+
+​		除了隔离依赖服务的调用之外，`Hystrix` 还提供了准实时的调用监控（Hystrix dashboard），Hystrix会持续的记录所有通过 `Hystrix` 发起的请求的执行信息，并以统计报表和图形的形式展示给用户，包括每秒执行多少请求多少成功，多少失败等。 `Netflix` 通过 `Hystrix-metrics-event-stream` 项目实现了对以上指标的监控。`SpringCloud` 也提供了 `Hystrix Dashboard` 的整合，对监控内容转化成可视化界面。 
+
+#### 7.7.2 新建项目
+
+​		新建一个名为 `cloud-consumer-hystrix-dashboard9001` 的项目
+
+#### 7.7.3 改 `pom`
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <parent>
+        <artifactId>CloudStudy</artifactId>
+        <groupId>com.lyl</groupId>
+        <version>1.0-SNAPSHOT</version>
+    </parent>
+    <modelVersion>4.0.0</modelVersion>
+
+    <artifactId>cloud-consumer-hystrix-dashboard9001</artifactId>
+
+    <properties>
+        <maven.compiler.source>8</maven.compiler.source>
+        <maven.compiler.target>8</maven.compiler.target>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-netflix-hystrix-dashboard</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-devtools</artifactId>
+        </dependency>
+    </dependencies>
+
+</project>
+```
+
+#### 7.7.4 改 `yml`
+
+```yml
+server:
+  port: 9001
+```
+
+#### 7.7.5 主启动
+
+```java
+package com.lyl.springcloud;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.cloud.netflix.hystrix.dashboard.EnableHystrixDashboard;
+
+@SpringBootApplication
+@EnableHystrixDashboard
+public class HystrixDashboardMain9001 {
+    public static void main(String[] args) {
+        SpringApplication.run(HystrixDashboardMain9001.class,args);
+    }
+}
+```
+
+#### 7.7.6 完善监控信息
+
+​		==所有的 Provider 微服务提供类（8001/8002/8003）都需要监控依赖配置==
+
+`actuator` 监控信息的完善
+
+```xml
+ <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+```
+
+在 `服务提供者` 模块修改
+
+ 1. 配置 `Hystrix` 指定监控路径
+
+     **`注意：`** 新版本 Hystrix **`需要在主启动类中指定监控路径`**，如果没有此项操作，在项目启动后，Hystrix Dashboard 会报: **`Unable to connect to Command Metric Stream`** 这样一个错误。配置内容如下：
+
+    ```java
+    /**
+     * 此配置为了服务监控而配置，与服务容错本身无关，
+     * SpringCloud升级后的坑，ServletRegistrationBean
+     * 因为SpringBoot的默认路径不是"/hystrix.stream",
+     * 只要在自己的项目里配置上下面的Servlet就可以了。
+     * @return
+     */
+    @Bean
+    public ServletRegistrationBean getServlet(){
+        HystrixMetricsStreamServlet streamServlet = new HystrixMetricsStreamServlet();
+        ServletRegistrationBean registrationBean = new ServletRegistrationBean(streamServlet);
+        registrationBean.setLoadOnStartup(1);
+        registrationBean.addUrlMappings("/hystrix.stream");
+        registrationBean.setName("HystrixMetricsStreamServlet");
+        return registrationBean;
+    }
+    ```
+
+    
+
+#### 7.7.7 测试
+
+​		依次启动项目：`provider8001`、`provider8002` 、`eureka7001`、`eureka7002` 和 `Dashboard9001` 。
+
+然后，在浏览器中输入：http://localhost:9001/hystrix，可以在浏览器中看到以下图片。
+
+![image-20220130200930579](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-30/865d3f79829a05ee9a93db7a5ce75caa.jpeg)
+
+编写以下配置，可以看到以下信息：
+
+http://localhost:8001/hystrix.stream
+
+![image-20220130221036787](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-30/58eba0da2ac41214e616770d8d850593.jpeg)
+
+点击 **Monitor Stream**， 注意，第一次可能显示 `loading` ，需要调用一个启动熔断器的接口，就会出现监控
+
+![image-20220130221150351](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-01-30/ec6629b39e009270dd00427915261477.jpeg)
 ## 8. Gateway网关
 
 ​		[官方文档](https://docs.spring.io/spring-cloud-gateway/docs/current/reference/html/)
@@ -3990,16 +4206,33 @@ public class MyLogGatewayFilter implements GlobalFilter, Ordered {
 **能干吗**
 
 - 集中管理配置文件
-
 - 不同环境不同配置，动态化的配置更新，分环境部署比如dev/test/prod/beta/release
-
 - 运行期间动态调整配置,不再需要在每个服务部署的机器上编写配置文件,服务会向配置中心统一拉取配置自己的信息，
-
 - 当配置发生变动时，服务不需要重启即可感知到配置的变化并应用新的配置
-
 - 将配置信息以REST接口的形式暴露
 
   - post、curl 访问刷新均可……
 
-  
+
+**与GitHub整合配置**
+
+​		由于 `SpringCloud Config` 默认是使用 `Git` 来存储配置文件（也有其他方式，比如支持SVN和本地文件），但最推荐的还是 `Git` ，而且使用的是 `http/https` 访问的形式
+
+### 9.2 服务端配置与测试
+
+#### 9.2.1 创建github仓库
+
+​		在 `github` 上面新建仓库，用于存放配置文件
+
+![image-20220208210728799](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-02-08/8efd3248305e50fefe72c73787d6ba0b.jpeg)
+
+​		创建仓库之后，添加一些配置文件到仓库中。
+
+#### 9.2.2 新建模块
+
+​		新建一个名为 `cloud-config-server3344` 的模块
+
+#### 9.2.3 改 `pom`
+
+
 

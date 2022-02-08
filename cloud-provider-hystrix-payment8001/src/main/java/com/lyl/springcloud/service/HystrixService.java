@@ -21,4 +21,12 @@ public interface HystrixService {
      * @return Result
      */
     Result hystrix_Timeout(Integer id);
+
+    /**
+     * 测试短路的方法
+     * @param id id
+     * @return
+     */
+    Result paymentCircuitBreaker(Integer id);
+
 }

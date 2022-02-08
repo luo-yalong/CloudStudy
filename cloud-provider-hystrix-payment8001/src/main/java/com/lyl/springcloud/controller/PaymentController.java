@@ -39,4 +39,14 @@ public class PaymentController {
     }
 
 
+    /**
+     * 服务熔断方法
+     * @param id
+     * @return
+     */
+    @GetMapping("/payment/circuit/{id}")
+    public Result paymentCircuitBreaker(@PathVariable("id") Integer id){
+        return hystrixService.paymentCircuitBreaker(id);
+    }
+
 }
