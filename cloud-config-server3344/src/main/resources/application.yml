@@ -9,12 +9,19 @@ spring:
       server:
         git:
           # ssh地址（也可以使用 https地址，不过需要配置username和password）,我配置了加速之后的地址
-          uri: git@git.zhlh6.cn:luo-yalong/SpringCloud-config.git
+#          uri: git@git.zhlh6.cn:luo-yalong/SpringCloud-config.git
+#          uri: git@github.com:luo-yalong/SpringCloud-config.git
+#          uri: git@gitee.com:luoyalongLYL/SpringCloud-config.git
           # 搜索的目标
           search-paths:
             - SpringCloud-config
 
-# 读取的分支
+          #使用账号密码
+          uri: https://gitee.com/luoyalongLYL/SpringCloud-config.git
+          username: 2192714220@qq.com
+          password: L19970310
+
+      # 读取的分支
       label: master
 
 eureka:
