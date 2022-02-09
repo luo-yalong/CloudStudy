@@ -4234,5 +4234,569 @@ public class MyLogGatewayFilter implements GlobalFilter, Ordered {
 
 #### 9.2.3 改 `pom`
 
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <parent>
+        <artifactId>CloudStudy</artifactId>
+        <groupId>com.lyl</groupId>
+        <version>1.0-SNAPSHOT</version>
+    </parent>
+    <modelVersion>4.0.0</modelVersion>
+
+    <artifactId>cloud-config-server3344</artifactId>
+
+    <properties>
+        <maven.compiler.source>8</maven.compiler.source>
+        <maven.compiler.target>8</maven.compiler.target>
+    </properties>
+
+    <dependencies>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <!--监控信息的完善-->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-config-server</artifactId>
+        </dependency>
+        <!--eureka-client-->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-netflix-eureka-client</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <dependency>
+            <groupId>cn.hutool</groupId>
+            <artifactId>hutool-all</artifactId>
+        </dependency>
+    </dependencies>
+
+</project>
+```
+
+#### 9.2.4 改 `yml`
+
+**注意： 此时 `uri` 我使用的是ssh加速之后的地址，原地址可能会导致该模块报错：==USERAUTH fail==**
+
+```yml
+server:
+  port: 3344
+
+spring:
+  application:
+    name: cloud-config-center
+  cloud:
+    config:
+      server:
+        git:
+          # ssh地址（也可以使用 https地址，不过需要配置username和password）,我配置了加速之后的地址
+          uri: git@git.zhlh6.cn:luo-yalong/SpringCloud-config.git
+          # 搜索的目标
+          search-paths:
+            - SpringCloud-config
+
+# 读取的分支
+      label: master
+
+eureka:
+  client:
+    #表示是否向eureka注册自己
+    register-with-eureka: true
+    #表示是否需要从 eureka-server 抓取已有的注册信息，单节点无所谓，集群必须为true
+    fetch-registry: true
+    service-url:
+      #注册中心地址
+      #      defaultZone: http://localhost:7001/eureka  #单机版
+      defaultZone: http://eureka7001.com:7001/eureka,http://eureka7002.com:7002/eureka  #集群版
+  instance:
+    #实例id,显示在Eureka注册中心的名字，默认是ip地址+端口号
+    instance-id: Config3344
+    #访问路径是否显示ip地址
+    prefer-ip-address: true
+```
+
+#### 9.2.5 主启动
+
+```java
+package com.lyl.springcloud;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.cloud.config.server.EnableConfigServer;
+
+/**
+ * @author luoyalong
+ */
+@SpringBootApplication
+@EnableConfigServer
+public class ConfigMain3344 {
+    public static void main(String[] args) {
+        SpringApplication.run(ConfigMain3344.class,args);
+    }
+}
+```
+
+#### 9.2.6 其他设置
+
+1. 修改 `hosts` 文件
+
+   ​		修改 `hosts` 文件，在其中添加域名映射
+
+   ```reStructuredText
+   127.0.0.1	config-3344.com
+   ```
+
+#### 9.2.7 测试
+
+1. **依次启动项目**
+
+   - EurekaMain7001
+   - EurekaMain7002
+   - ConfigMain3344
+
+2. **测试**
+
+   ​		在浏览器中输入 http://eureka7001.com:7001  可以查看到配置中心已经注册进注册中心了。
+
+   <img src="https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-02-09/bae5c9634f5a2711d74fd0ad6ea056e4.jpeg" alt="image-20220209103717829" style="zoom: 50%;" />
+
+   ---
+
+   具体查看 `GitHub`仓库中配置文件的拼接方法可以参考[官网](https://docs.spring.io/spring-cloud-config/docs/current/reference/html/)
+
+   The HTTP service has resources in the following form:
+
+   - **application：**应用名称，例如：application，config
+   - **profile：**环境名称，例如：dev，test，prod
+   - **label：** `git` 分支，例如：master，dev
+
+   ```apl
+   /{application}/{profile}[/{label}]
+   /{application}-{profile}.yml
+   /{label}/{application}-{profile}.yml
+   /{application}-{profile}.properties
+   /{label}/{application}-{profile}.properties
+   ```
+
+   For example:
+
+   ```apl
+   curl localhost:8888/foo/development
+   curl localhost:8888/foo/development/master
+   curl localhost:8888/foo/development,db/master
+   curl localhost:8888/foo-development.yml
+   curl localhost:8888/foo-db.properties
+   curl localhost:8888/master/foo-db.properties
+   ```
+
+   ​	在浏览器中输入 http://config-3344.com:3344/master/config-dev.yml，可以查看开发环境配置
+
+   ![image-20220209103856013](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-02-09/d16bc48000f6d407744ddd027ce47f20.jpeg)
+
+   ​	在浏览器中输入 http://config-3344.com:3344/master/config-test.yml，可以查看测试环境配置
+
+   ![image-20220209103955941](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-02-09/330172e37fca10966d5ce06f6214e952.jpeg)
+
+   ​	
+
+### 9.3 Config客户端配置与测试
+
+​		`config` 客户端需要从配置中心读取配置文件。
+
+#### 9.3.1 新建Config客户端模块
+
+​		新建一个名为 `cloud-config-client-3355` 的模块
+
+#### 9.3.2 改 `pom`
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <parent>
+        <artifactId>CloudStudy</artifactId>
+        <groupId>com.lyl</groupId>
+        <version>1.0-SNAPSHOT</version>
+    </parent>
+    <modelVersion>4.0.0</modelVersion>
+
+    <artifactId>cloud-config-client-3355</artifactId>
+
+    <properties>
+        <maven.compiler.source>8</maven.compiler.source>
+        <maven.compiler.target>8</maven.compiler.target>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <!--监控信息的完善-->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <!--config客户端-->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-config</artifactId>
+        </dependency>
+        <!--eureka-client-->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-netflix-eureka-client</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <dependency>
+            <groupId>cn.hutool</groupId>
+            <artifactId>hutool-all</artifactId>
+        </dependency>
+    </dependencies>
+
+</project>
+```
+
+#### 9.3.3 改 `yml`
+
+​		不同与之前的 `application.yml` ，当前模块我们需要新建一个 `bootstrap.yml` 文件替换掉 `application.yml`文件
+
+---
+
+**介绍**
+
+​		`application.yml` 是用户级的资源配置项
+
+​		`bootstrap.yml` 是系统级的资源配置项
+
+`Bootstrap`属性有高优先级，默认情况下,它们不会被本地配置覆盖。Bootstrap context和Application Context'有着不同的约定
+所以新增了-个`bootstrap.yml`文件，保证`Bootstrap Context`和 `Application Context`配置的分离。
+
+要将 `Client` 模块下的 `application.yml` 文件改为 `bootstrap.yml` ，这是很关键的，因为`bootstrap.yml`是比application.yml先加载的。
+
+`bootstrap.yml`优先级高于`application.yml`
+
+---
+
+```yml
+server:
+  port: 3355
+
+spring:
+  application:
+    name: cloud-config-client
+  cloud:
+    config:
+      # 读取的分支
+      label: master
+      name: config  #配置文件的名称
+      profile: dev  #读取的后缀名称
+      #上述综合：master分支上config-dev.yml的配置文件被读取http://config-3344.com:3344/master/config-dev.yml
+      uri: http://localhost:3344 #配置中心地址
+
+eureka:
+  client:
+    #表示是否向eureka注册自己
+    register-with-eureka: true
+    #表示是否需要从 eureka-server 抓取已有的注册信息，单节点无所谓，集群必须为true
+    fetch-registry: true
+    service-url:
+      #注册中心地址
+      #      defaultZone: http://localhost:7001/eureka  #单机版
+      defaultZone: http://eureka7001.com:7001/eureka,http://eureka7002.com:7002/eureka  #集群版
+  instance:
+    #实例id,显示在Eureka注册中心的名字，默认是ip地址+端口号
+    instance-id: ConfigClient3355
+    #访问路径是否显示ip地址
+    prefer-ip-address: true
+```
+
+#### 9.3.4 主启动
+
+```java
+package com.lyl.springcloud;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.cloud.netflix.eureka.EnableEurekaClient;
+
+/**
+ * @author 罗亚龙
+ * @date 2022/2/9 11:03
+ */
+@SpringBootApplication
+@EnableEurekaClient
+public class ConfigClientMain3355 {
+    public static void main(String[] args) {
+        SpringApplication.run(ConfigClientMain3355.class,args);
+    }
+}
+```
+
+#### 9.3.5 业务类
+
+​		读取配置文件中的信息
+
+```java
+package com.lyl.springcloud.controller;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+/**
+ * @author 罗亚龙
+ * @date 2022/2/9 11:05
+ */
+@RestController
+public class ConfigClientController {
+
+    @Value("${config.info}")
+    private String configInfo;
+
+    @GetMapping("/getConfigInfo")
+    public String getConfigInfo(){
+        return configInfo;
+    }
+}
+```
+
+#### 9.3.6 测试
+
+1. **依次启动项目**
+
+   - 启动 EurekaMain7001
+   - 启动 EurekaMain7002
+   - 启动 ConfigMain3344
+   - 启动 ConfigClientMain3355
+
+2. **测试**
+
+    1. 测试配置中心
+
+       ​		在浏览器中输入：http://config-3344.com:3344/master/config-dev.yml ，可以看到配置信息
+
+       ![image-20220209112144127](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-02-09/ea89706c75d9184cef091696439e72ba.jpeg)
+
+    2. 测试Config客户端
+
+       ​		在浏览器中输入：http://localhost:3355/getConfigInfo ,  可以从配置中心获取到配置的信息
+
+       ![image-20220209112254518](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-02-09/5385a63c50f3e9852162c38f0b766bd2.jpeg)
+
+       ​		因为 `config` 客户端的 `yml` 文件中配置的是 ： `master` 分支的 `dev` 文件，所以，获取到的是 `dev` 环境的配置文件。现在，我们修改 `config` 客户端的 `yml` 文件，使其获取 `master` 分支的 `prod` 文件
+
+       **修改之后的 `yml`文件如下所示**
+
+       <img src="https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-02-09/915f07aea0d1dccddb1022672b4df384.jpeg" alt="image-20220209112643632" style="zoom: 50%;" />
+
+       之后，再次使用 http://localhost:3355/getConfigInfo  获取配置中心的配置，显示如下：
+
+       ![image-20220209112835600](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-02-09/11fe38a1a9ab0a26146365f7d05ac089.jpeg)
+
+#### 9.3.7 总结
+
+​		成功实现了`客户端 3355` 访问 `配置中心 3344` 通过 `GitHub` 获取配置信息的功能
+
+### 9.4 分布式的动态刷新问题
+
+  1. 现在修改 `GitHub` 上面的配置文件，加 age 或者修改版本号，配置中心可以立即获取到 `GitHub` 上面变化的配置文件，但是 `客户端 3355` 并没有立即响应的新配置。
+
+      1. 修改 `GitHub` 上 `config-dev.yml` 的版本号
+
+         ![image-20220209113644881](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-02-09/1e077b8befe7b6b95ceb00f808757d99.jpeg)
+
+         <img src="https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-02-09/72b482ba24a6bff96b38776e1302eff4.jpeg" alt="image-20220209113748168" style="zoom: 67%;" />
+
+     	2. 刷新配置中心获取 `dev` 配置
+
+         ​		在浏览器中输入 http://config-3344.com:3344/config-dev.yml ，响应立即发生变化
+
+         ![image-20220209113932427](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-02-09/001e819cceb0fbe11fd8a74aff20a12b.jpeg)
+
+     	3. `config客户端3355` 获取配置中心配置
+
+         ​		在浏览器中输入：http://localhost:3355/getConfigInfo  ，配置并没有变化，此时需要重新启动 客户端，才可以让响应发生变化。
+
+         ![image-20220209114109141](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-02-09/2b4f131ce96d2a6ae57a26ffaa4528c5.jpeg)
+
+  2. 动态刷新问题
+
+     1. `Linux` 运维修改了 `GitHub` 上的配置文件内容做调整
+     2. 刷新 3344 ， 发现 `ConfigServer` 配置中心立即响应
+     3. 刷新 3355 ， 发现 `ConfigClient` 客户端没有任何响应
+     4. 3355 没有变化，除非自己重启或者重新加载
+     5. 难道每次运维修改配置文件，客户端都需要重启？？？噩梦
+
+### 9.5 Config动态刷新之手动版
+
+#### 9.5.1 概述
+
+​		为了在运维工程师修改 `GitHub` 中的配置文件之后，`config客户端` 不需要重启就可以加载到变化了的配置 ，我们需要添加一些配置。
+
+#### 9.5.2 改 `pom` 引入 `actuator` 监控
+
+```xml
+<!--监控信息的完善-->
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-actuator</artifactId>
+</dependency>
+```
+
+#### 9.5.3 暴露监控端点
+
+​		在 `Config客户端3355` 的 `bootstrap.yml` 中添加以下内容
+
+```yml
+#暴露监控端点      
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+```
+
+**完整 `bootstrap.yml`**
+
+```yml
+server:
+  port: 3355
+
+spring:
+  application:
+    name: cloud-config-client
+  cloud:
+    config:
+      # 读取的分支
+      label: master
+      name: config  #配置文件的名称
+      profile: dev  #读取的后缀名称
+      #上述综合：master分支上config-dev.yml的配置文件被读取http://config-3344.com:3344/master/config-dev.yml
+      uri: http://localhost:3344 #配置中心地址
+
+#暴露监控端点
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+
+eureka:
+  client:
+    #表示是否向eureka注册自己
+    register-with-eureka: true
+    #表示是否需要从 eureka-server 抓取已有的注册信息，单节点无所谓，集群必须为true
+    fetch-registry: true
+    service-url:
+      #注册中心地址
+      #      defaultZone: http://localhost:7001/eureka  #单机版
+      defaultZone: http://eureka7001.com:7001/eureka,http://eureka7002.com:7002/eureka  #集群版
+  instance:
+    #实例id,显示在Eureka注册中心的名字，默认是ip地址+端口号
+    instance-id: ConfigClient3355
+    #访问路径是否显示ip地址
+    prefer-ip-address: true
+```
+
+#### 9.5.4 修改业务类
+
+​		在业务类上面添加 `@RefreshScope` 注解，实现刷新功能
+
+**完整代码如下：**
+
+```java
+package com.lyl.springcloud.controller;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cloud.context.config.annotation.RefreshScope;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+/**
+ * @author 罗亚龙
+ * @date 2022/2/9 11:05
+ */
+@RestController
+@RefreshScope
+public class ConfigClientController {
+
+    @Value("${config.info}")
+    private String configInfo;
+
+    @GetMapping("/getConfigInfo")
+    public String getConfigInfo(){
+        return configInfo;
+    }
+}
+```
+
+#### 9.5.5 测试
+
+​		此时，修改 `GitHub` 上面的配置文件，查看配置中心，配置中心的响应发生改变，但是 `Config客户端3355`  上的 http://localhost:3355/getConfigInfo 接口中的响应没有发生改变。此时，依旧需要重新启动才能加载到最新的文件。
+
+​		这似乎不是动态刷新，我们做的这几步好像是多余的，没有生效。
+
+​		别着急，在运维工程师修改 `Github` 中的配置文件之后，需要发送一个 `post` 请求，使配置刷新
+
+```shell
+curl -X POST "http://localhost:3355/actuator/refresh"
+```
+
+![image-20220209133112824](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-02-09/6d86f0c9d60f2c7f5ea115c63d657074.jpeg)
+
+之后，再次调用 http://localhost:3355/getConfigInfo 就会发现不需要重启项目，配置也会生效了
+
+![image-20220209133222796](https://gitee.com/luoyalongLYL/upload_image_repo/raw/master/typroa/2022-02-09/6c4f2942768352695c22353897b475b7.jpeg)
+
+#### 9.5.6 手动版动态刷新总结
+
+- 运维工程师修改 `Github` 上的配置文件
+- 发送 `post` 请求，刷新配置
+
+### 9.6 后序问题
+
+​		目前，我们基本上完成了配置的动态刷新功能。
+
+​		但是还是有一些问题的：
+
+​				假如目前有多个微服务客户端 `3355、3366、3377……` ，每个微服务都需要手动执行一次 `post` 请求，手动刷新？有些麻烦。虽然可以利用脚本自动批量刷新，但是如果我们需要精确的刷新某些配置，可能就力不从心了。
+
+​				==可否广播，一次通知，处处生效？== 
+
+​				我们想大范围的自动刷新，就需要引入 `Spring Cloud Bus` 消息总线了。
+
 
 
